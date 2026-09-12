@@ -1,6 +1,6 @@
 {
   "name": "polygit",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Local-first CLI for assisted translation with translation memory, glossary propagation, Git integration, and LLM providers.",
   "license": "MIT",
   "author": "Marina Camacho",
@@ -21,7 +21,8 @@
     "git",
     "llm",
     "local-first",
-    "cat-tool"
+    "cat-tool",
+    "polygit"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -29,21 +30,32 @@
   "bin": {
     "polygit": "./dist/cli.js"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    ".env.example"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "prepublishOnly": "npm run build",
+"prepublishOnly": "npm run typecheck && npm test && npm run security:audit",
     "security:audit": "npm audit --omit=dev",
-    "test": "npm run build && node --test 'test/**/*.test.js'"
+    "test": "npm run build && node --test 'test/**/*.test.js'",
+    "pack:check": "npm pack --dry-run"
   },
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
