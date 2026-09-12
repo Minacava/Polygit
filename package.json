@@ -39,18 +39,21 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build",
-    "security:audit": "npm audit --omit=dev"
+    "security:audit": "npm audit --omit=dev",
+    "test": "npm run build && node --test test/**/*.test.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "dotenv": "^17.4.2",
+    "simple-git": "^3.36.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.13.10",
+    "@types/node": "^22.20.2",
     "typescript": "^5.8.2"
   }
 }

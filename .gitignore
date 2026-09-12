@@ -4,7 +4,6 @@ dist/
 
 # Local Polygit project state (created by `polygit init`)
 .tm/
-.tmconfig.json
 .env
 .env.*
 !.env.example
