@@ -4,6 +4,6 @@
  * Command implementations land in later epics; this stub keeps the package buildable.
  */
 console.error(
-  "Polygit CLI is not ready yet. Scaffold and database schema only — see docs/epics/.",
+  "Polygit CLI is under active development. Commands are not available yet — see the README for the planned interface.",
 );
 process.exit(1);
