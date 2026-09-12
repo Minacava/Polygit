@@ -29,19 +29,21 @@ Polygit is aimed at freelancers, small teams, and open-source projects that tran
 ## Install
 
 ```bash
-# From this repository (local)
-npm install
-npm run build
-node dist/cli.js <command>
-
-# After publish to npm
+# One-off
 npx polygit <command>
-# or
+
+# Global install
 npm install -g polygit
 polygit <command>
 ```
 
-> Not published to npm yet. Use a local build (`npm run build && node dist/cli.js`) or `npx` once the package is released.
+From a clone of this repository:
+
+```bash
+npm install
+npm run build
+npm link   # optional: exposes `polygit` on your PATH
+```
 
 ---
 
@@ -231,14 +233,12 @@ Only set the provider(s) you use. **Do not commit `.env`.**
 
 ---
 
-## Supported formats (MVP)
+## Supported formats
 
 | Format | Flag | Notes |
 | --- | --- | --- |
 | Markdown | `--format=markdown` | Docs and README-style content |
 | JSON i18n | `--format=json-i18n` | Leaf string values; keys and structure preserved |
-
-Additional formats may be added later.
 
 ---
 

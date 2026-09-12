@@ -24,4 +24,10 @@ export {
   segmentProse,
 } from "./core/segmenter.js";
 
-export { matchTranslationMemory, similarity } from "./core/matcher.js";
+export {
+  matchTranslationMemory,
+  similarity,
+  DEFAULT_FUZZY_THRESHOLD,
+} from "./core/matcher.js";
+
+export { getPackageVersion } from "./version.js";

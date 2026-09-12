@@ -11,6 +11,7 @@ import { runStatus } from "./commands/status.js";
 import { runTranslate } from "./commands/translate.js";
 import type { DocumentFormat, SegmentStatus } from "./core/db.js";
 import { findProjectRoot } from "./core/project.js";
+import { getPackageVersion } from "./version.js";
 import { redactSecrets } from "./connectors/index.js";
 
 const projectRoot = findProjectRoot() ?? process.cwd();
@@ -23,7 +24,7 @@ program
   .description(
     "Local-first CLI for assisted translation with TM, glossary propagation, Git, and LLMs.",
   )
-  .version("0.1.0");
+  .version(getPackageVersion());
 
 program
   .command("init")
