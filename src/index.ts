@@ -16,3 +16,12 @@ export type {
   TranslationRow,
   TranslationSource,
 } from "./core/db.js";
+
+export {
+  createSegmentId,
+  createId,
+  normalizeText,
+  segmentProse,
+} from "./core/segmenter.js";
+
+export { matchTranslationMemory, similarity } from "./core/matcher.js";
