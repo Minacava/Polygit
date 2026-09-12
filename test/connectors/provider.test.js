@@ -20,10 +20,11 @@ describe("provider helpers", () => {
 
   it("redacts API keys from error strings", () => {
     const redacted = redactSecrets(
-      "failed with sk-ant-abcdefghijklmnopqrstuvwxyz and Bearer tok_1234567890",
+      "failed with sk-ant-abcdefghijklmnopqrstuvwxyz and Bearer tok_1234567890 and glpat-abcdefghij1234567890",
     );
     assert.doesNotMatch(redacted, /sk-ant-abcdefgh/);
     assert.match(redacted, /sk-\*\*\*/);
     assert.match(redacted, /Bearer \*\*\*/);
+    assert.match(redacted, /glpat-\*\*\*/);
   });
 });
