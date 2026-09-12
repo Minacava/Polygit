@@ -29,15 +29,19 @@ Polygit is aimed at freelancers, small teams, and open-source projects that tran
 ## Install
 
 ```bash
-# One-off (recommended)
-npx polygit <command>
+# From this repository (local)
+npm install
+npm run build
+node dist/cli.js <command>
 
-# Or install globally
+# After publish to npm
+npx polygit <command>
+# or
 npm install -g polygit
 polygit <command>
 ```
 
-> The package is under active development. Commands below describe the intended CLI surface for the MVP.
+> Not published to npm yet. Use a local build (`npm run build && node dist/cli.js`) or `npx` once the package is released.
 
 ---
 
@@ -256,8 +260,10 @@ git clone https://github.com/Minacava/Polygit.git
 cd Polygit
 npm install
 npm run typecheck
-npm run build
+npm test
 ```
+
+Tests live under `test/`, mirroring `src/` (`test/core`, `test/parsers`, `test/connectors`) plus a CLI smoke test. Run them with `npm test` (builds first, then `node --test`).
 
 ---
 
