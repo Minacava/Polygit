@@ -9,6 +9,9 @@ dist/
 .env.*
 !.env.example
 
+# npm auth (never commit tokens)
+.npmrc
+
 # OS / editor
 .DS_Store
 Thumbs.db
