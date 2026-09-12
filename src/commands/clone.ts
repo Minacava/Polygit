@@ -33,7 +33,15 @@ export async function runClone(url: string, options: CloneOptions = {}): Promise
   }
 
   console.log(`Cloning ${forgeLabel} repository into ${targetDir}…`);
-  await cloneRepository(url, targetDir);
+  try {
+    await cloneRepository(url, targetDir);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Clone failed. Public repos need no token; private repos need Git credentials ` +
+        `(SSH key or HTTPS PAT) with read access.\n${detail}`,
+    );
+  }
   console.log(`Cloned ${url}`);
 
   if (options.init !== false) {

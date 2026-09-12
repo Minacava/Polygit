@@ -125,7 +125,15 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
   }
 
   console.log(`Pushing ${sourceBranch} to origin…`);
-  await pushBranch(root, sourceBranch);
+  try {
+    await pushBranch(root, sourceBranch);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Push failed. You need write access to this remote (or publish from your fork). ` +
+        `Polygit does not grant GitHub/GitLab permissions — use SSH/HTTPS credentials that can push.\n${detail}`,
+    );
+  }
 
   const title =
     options.title ?? `translate: ${options.lang ?? "translations"} via Polygit`;
@@ -147,13 +155,25 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
       .filter((line) => line !== null)
       .join("\n");
 
-  const mr = await forge.createMergeRequest(repo, {
-    sourceBranch,
-    targetBranch,
-    title,
-    body,
-    draft: Boolean(options.draft),
-  });
+  let mr;
+  try {
+    mr = await forge.createMergeRequest(repo, {
+      sourceBranch,
+      targetBranch,
+      title,
+      body,
+      draft: Boolean(options.draft),
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    const tokenHint =
+      repo.kind === "github"
+        ? "Set GITHUB_TOKEN (or GH_TOKEN) with permission to create pull requests."
+        : "Set GITLAB_TOKEN (or GL_TOKEN) with api scope to create merge requests.";
+    throw new Error(
+      `Could not open a ${repo.kind === "github" ? "pull request" : "merge request"}. ${tokenHint}\n${detail}`,
+    );
+  }
 
   const label = repo.kind === "github" ? "Pull request" : "Merge request";
   const ref = repo.kind === "github" ? `#${mr.number}` : `!${mr.number}`;

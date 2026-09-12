@@ -300,6 +300,28 @@ Shows counts for **pending**, **stale**, **translated**, and **approved** segmen
 
 ---
 
+## Access & permissions
+
+Polygit does **not** log you into GitHub/GitLab or grant access you do not already have. It reuses normal Git + a forge API token.
+
+| Action | What you need |
+| --- | --- |
+| `clone` a **public** repo | Nothing special — plain `git clone` |
+| `clone` a **private** repo | Git credentials with **read** access (SSH key, HTTPS PAT, or credential helper) |
+| Local work (`import` / `translate` / `review` / `commit`) | No forge account required |
+| `publish` (push + open PR/MR) | Git credentials with **write** (push) **and** `GITHUB_TOKEN` or `GITLAB_TOKEN` with permission to create PRs/MRs |
+
+If you **cannot push** to the upstream repo (common for open-source contributions):
+
+1. Fork the project on GitHub/GitLab into your account.
+2. `polygit clone` **your fork** (or add your fork as `origin` / a push remote).
+3. Translate and `polygit publish` — the PR/MR opens **from your fork** (or from a branch you can push).
+4. Maintainers merge after remote review.
+
+Without push access, Polygit can still translate and commit **locally**; only `publish` will fail until credentials and permissions are in place.
+
+---
+
 ## Configuration
 
 ### `.tmconfig.json`
