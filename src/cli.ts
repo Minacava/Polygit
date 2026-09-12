@@ -2,10 +2,12 @@
 import { config as loadDotenv } from "dotenv";
 import { Command } from "commander";
 import path from "node:path";
+import { runClone } from "./commands/clone.js";
 import { runCommit } from "./commands/commit.js";
 import { runGlossaryAdd, runGlossarySync } from "./commands/glossary.js";
 import { runImport } from "./commands/import.js";
 import { runInit } from "./commands/init.js";
+import { runPublish } from "./commands/publish.js";
 import { runReview } from "./commands/review.js";
 import { runStatus } from "./commands/status.js";
 import { runTranslate } from "./commands/translate.js";
@@ -31,6 +33,19 @@ program
   .description("Create sources/, outputs/, .tmconfig.json, and local SQLite DB")
   .action(async () => {
     await runInit();
+  });
+
+program
+  .command("clone")
+  .description("Clone a GitHub or GitLab repo and optionally run init")
+  .argument("<url>", "Git remote URL (https or SSH)")
+  .option("--dir <path>", "Target directory (defaults to repo name)")
+  .option("--no-init", "Skip polygit init after clone")
+  .action(async (url: string, opts: { dir?: string; init?: boolean }) => {
+    await runClone(url, {
+      ...(opts.dir ? { dir: opts.dir } : {}),
+      init: opts.init !== false,
+    });
   });
 
 program
@@ -126,6 +141,43 @@ program
       ...(opts.message ? { message: opts.message } : {}),
     });
   });
+
+program
+  .command("publish")
+  .description(
+    "After local review: commit, push a branch, and open a GitHub PR or GitLab MR",
+  )
+  .option("--lang <lang>", "Language being published (used in branch/title)")
+  .option("--branch <name>", "Source branch name to push")
+  .option("--target-branch <name>", "Base branch for the PR/MR (default: remote HEAD)")
+  .option("--title <title>", "PR/MR title")
+  .option("--body <body>", "PR/MR description")
+  .option("--draft", "Open as draft", false)
+  .option("--yes", "Skip confirmation", false)
+  .option("--allow-unapproved", "Skip the local-approval gate (not recommended)", false)
+  .action(
+    async (opts: {
+      lang?: string;
+      branch?: string;
+      targetBranch?: string;
+      title?: string;
+      body?: string;
+      draft?: boolean;
+      yes?: boolean;
+      allowUnapproved?: boolean;
+    }) => {
+      await runPublish({
+        ...(opts.lang ? { lang: opts.lang } : {}),
+        ...(opts.branch ? { branch: opts.branch } : {}),
+        ...(opts.targetBranch ? { targetBranch: opts.targetBranch } : {}),
+        ...(opts.title ? { title: opts.title } : {}),
+        ...(opts.body ? { body: opts.body } : {}),
+        draft: Boolean(opts.draft),
+        yes: Boolean(opts.yes),
+        allowUnapproved: Boolean(opts.allowUnapproved),
+      });
+    },
+  );
 
 program
   .command("status")

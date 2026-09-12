@@ -63,3 +63,90 @@ export async function getDiffSummary(projectRoot: string): Promise<string> {
   }
   return parts.join("\n\n") || "(no diff)";
 }
+
+export async function getRemoteUrl(
+  projectRoot: string,
+  remote = "origin",
+): Promise<string | null> {
+  const git = simpleGit(projectRoot);
+  try {
+    const url = (await git.remote(["get-url", remote]))?.trim();
+    return url || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getCurrentBranch(projectRoot: string): Promise<string> {
+  const git = simpleGit(projectRoot);
+  const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+  return branch.trim();
+}
+
+export async function getDefaultRemoteBranch(
+  projectRoot: string,
+  remote = "origin",
+): Promise<string> {
+  const git = simpleGit(projectRoot);
+  try {
+    const sym = await git.raw(["symbolic-ref", `refs/remotes/${remote}/HEAD`]);
+    const match = sym.trim().match(/refs\/remotes\/[^/]+\/(.+)$/);
+    if (match?.[1]) return match[1];
+  } catch {
+    // fall through
+  }
+  const branches = await git.branch(["-r"]);
+  if (branches.all.includes(`${remote}/main`)) return "main";
+  if (branches.all.includes(`${remote}/master`)) return "master";
+  return "main";
+}
+
+export async function checkoutBranch(
+  projectRoot: string,
+  branch: string,
+  create = false,
+): Promise<void> {
+  const git = simpleGit(projectRoot);
+  if (create) {
+    await git.checkoutLocalBranch(branch);
+  } else {
+    await git.checkout(branch);
+  }
+}
+
+export async function pushBranch(
+  projectRoot: string,
+  branch: string,
+  remote = "origin",
+  setUpstream = true,
+): Promise<void> {
+  const git = simpleGit(projectRoot);
+  if (setUpstream) {
+    await git.push(remote, branch, ["--set-upstream"]);
+  } else {
+    await git.push(remote, branch);
+  }
+}
+
+export async function hasUncommittedTranslationChanges(
+  projectRoot: string,
+): Promise<boolean> {
+  const git = simpleGit(projectRoot);
+  const status = await git.status();
+  const paths = [
+    ...status.not_added,
+    ...status.modified,
+    ...status.created,
+    ...status.deleted,
+    ...status.staged,
+  ];
+  return paths.some((p) => p.startsWith("sources/") || p.startsWith("outputs/"));
+}
+
+export async function cloneRepository(
+  url: string,
+  targetDir: string,
+): Promise<void> {
+  const git = simpleGit();
+  await git.clone(url, targetDir);
+}

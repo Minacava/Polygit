@@ -391,3 +391,47 @@ export function getStatusCounts(db: Database.Database): Array<{
     return { path: doc.path, ...counts };
   });
 }
+
+/** Count translated segments that are not yet locally approved (for publish gate). */
+export function countUnapprovedTranslations(
+  db: Database.Database,
+  lang?: string,
+): number {
+  if (lang) {
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM segments s
+         JOIN translations t ON t.segment_id = s.id
+         WHERE t.lang = ? AND s.status = 'translated' AND t.approved = 0`,
+      )
+      .get(lang) as { n: number };
+    return row.n;
+  }
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM segments s
+       WHERE s.status = 'translated'`,
+    )
+    .get() as { n: number };
+  return row.n;
+}
+
+export function countApprovedTranslations(
+  db: Database.Database,
+  lang?: string,
+): number {
+  if (lang) {
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM translations t
+         WHERE t.lang = ? AND t.approved = 1`,
+      )
+      .get(lang) as { n: number };
+    return row.n;
+  }
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM translations WHERE approved = 1`)
+    .get() as { n: number };
+  return row.n;
+}
+

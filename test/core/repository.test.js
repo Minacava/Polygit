@@ -5,6 +5,8 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { openDatabase } from "../../dist/core/db.js";
 import {
+  countApprovedTranslations,
+  countUnapprovedTranslations,
   getStatusCounts,
   markGlossarySegmentsStale,
   rebuildGlossaryUsage,
@@ -75,6 +77,28 @@ describe("repository", () => {
     const counts = getStatusCounts(db);
     assert.equal(counts[0]?.translated, 1);
     assert.equal(counts[0]?.pending, 0);
+    db.close();
+  });
+
+  it("counts approved vs unapproved translations for publish gate", () => {
+    const root = tempProject();
+    const db = openDatabase(root);
+    const doc = upsertDocument(db, "sources/hello.md", "markdown");
+    replaceDocumentSegments(db, doc, [
+      { orderIndex: 0, sourceText: "Hello." },
+      { orderIndex: 1, sourceText: "World." },
+    ]);
+    const segments = db
+      .prepare(`SELECT id FROM segments WHERE document_id = ? ORDER BY order_index`)
+      .all(doc.id);
+
+    upsertTranslation(db, segments[0].id, "fr", "Bonjour.", "llm", false);
+    upsertTranslation(db, segments[1].id, "fr", "Monde.", "llm", true);
+
+    assert.equal(countUnapprovedTranslations(db, "fr"), 1);
+    assert.equal(countApprovedTranslations(db, "fr"), 1);
+    assert.equal(countUnapprovedTranslations(db, "es"), 0);
+    assert.equal(countApprovedTranslations(db, "es"), 0);
     db.close();
   });
 });
