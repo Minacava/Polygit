@@ -49,6 +49,8 @@ npm link   # optional: exposes `polygit` on your PATH
 
 ## Quick start
 
+### Local project
+
 ```bash
 # 1. Create a Polygit project in the current directory
 npx polygit init
@@ -69,10 +71,36 @@ npx polygit translate fr --provider=claude
 
 # 6. Review, then commit sources + outputs together
 npx polygit review --lang=fr
-npx polygit commit
+npx polygit commit --yes
 ```
 
 Translated files appear under `outputs/fr/`, mirroring the `sources/` tree.
+
+### Clone → translate → remote approval (GitHub or GitLab)
+
+Polygit detects the forge from your `origin` remote URL (`github.com` → GitHub PR; anything else → GitLab MR, including self-hosted).
+
+```bash
+# 1. Clone and init
+npx polygit clone https://gitlab.com/your-group/docs.git
+# or: npx polygit clone https://github.com/you/docs.git
+cd docs
+
+# 2. Configure LLM + forge token in .env
+cp .env.example .env
+# ANTHROPIC_API_KEY / OPENAI_API_KEY
+# GITLAB_TOKEN (or GITHUB_TOKEN)
+
+# 3. Translate and approve locally
+npx polygit import sources/intro.md --format=markdown
+npx polygit translate fr --provider=claude
+npx polygit review --lang=fr
+
+# 4. Push a branch and open a PR (GitHub) or MR (GitLab)
+npx polygit publish --lang=fr --yes
+```
+
+Flow: **local review** gates quality → **remote PR/MR** gates merge.
 
 ---
 
@@ -89,7 +117,7 @@ outputs/<lang>/          Generated translations (same relative paths)
 1. **Import** splits each document into **segments** (sentence/block units) with stable IDs.
 2. **Translate** looks up the translation memory (exact, then fuzzy). Misses go to the configured LLM.
 3. **Glossary** terms are tracked across documents. Updating a term can mark every affected segment as stale.
-4. **Commit** versions `sources/` and `outputs/` together with a clear, auto-generated message.
+4. **Commit / publish** versions `sources/` and `outputs/` together. `publish` also pushes a branch and opens a GitHub pull request or GitLab merge request.
 
 Everything stays on disk. There is no Polygit cloud database.
 
@@ -106,6 +134,23 @@ npx polygit init
 ```
 
 Creates `sources/`, `outputs/`, `.tmconfig.json`, and `.tm/db.sqlite`. Initializes a Git repo if one is not already present.
+
+---
+
+### `clone`
+
+Clone a GitHub or GitLab repository, then run `init` in the new directory (unless `--no-init`).
+
+```bash
+npx polygit clone https://gitlab.com/group/docs.git
+npx polygit clone git@github.com:you/docs.git --dir=./work
+npx polygit clone https://gitlab.example.com/team/app.git --no-init
+```
+
+| Option | Description |
+| --- | --- |
+| `--dir=<path>` | Target directory (defaults to the repo name) |
+| `--no-init` | Skip `polygit init` after clone |
 
 ---
 
@@ -181,16 +226,40 @@ Commit `sources/` and `outputs/` together.
 
 ```bash
 npx polygit commit          # show diff, then confirm
-npx polygit commit --auto   # commit without interactive confirm
+npx polygit commit --yes    # commit without interactive confirm
 ```
 
 Example generated message:
 
 ```text
-translate: 12 segments updated in outputs/fr/intro.md
+translate: update sources/outputs (2026-09-12)
 ```
 
 Local database files (`.tm/`) and `.env` are never staged by this command.
+
+---
+
+### `publish`
+
+After **local** review approval: commit translation changes (if any), push a branch, and open a **GitHub pull request** or **GitLab merge request** for remote approval.
+
+```bash
+npx polygit publish --lang=fr --yes
+npx polygit publish --lang=fr --draft --branch=translate/fr
+npx polygit publish --lang=fr --allow-unapproved   # skip local gate (not recommended)
+```
+
+| Option | Description |
+| --- | --- |
+| `--lang=<lang>` | Language label for branch/title |
+| `--branch=<name>` | Source branch to push (default: `polygit/translate-<lang>-<date>`) |
+| `--target-branch=<name>` | Base branch (default: remote `HEAD`, usually `main`) |
+| `--title` / `--body` | PR/MR title and description |
+| `--draft` | Open as draft |
+| `--yes` | Skip confirmation |
+| `--allow-unapproved` | Allow publish when segments are not locally approved |
+
+Requires a forge token in `.env` (`GITHUB_TOKEN` / `GH_TOKEN`, or `GITLAB_TOKEN` / `GL_TOKEN`). Git push still uses your normal Git credentials (SSH key or credential helper).
 
 ---
 
@@ -227,9 +296,13 @@ Copy from `.env.example`:
 ```bash
 ANTHROPIC_API_KEY=your_key_here
 OPENAI_API_KEY=your_key_here
+
+# For polygit publish (GitHub PR or GitLab MR)
+GITHUB_TOKEN=
+GITLAB_TOKEN=
 ```
 
-Only set the provider(s) you use. **Do not commit `.env`.**
+Only set the provider(s) and forge token(s) you use. **Do not commit `.env`.**
 
 ---
 
@@ -248,6 +321,7 @@ Only set the provider(s) you use. **Do not commit `.env`.**
 - LLM calls go directly from your machine to the provider you configure.
 - Keep API keys in `.env` only. `.gitignore` excludes `.env`, `.tm/`, and related local state.
 - Prefer reviewing sensitive copy before sending it to a third-party model.
+- Forge tokens (`GITHUB_TOKEN`, `GITLAB_TOKEN`) are used only for opening PRs/MRs; they are never written into commits.
 
 ---
 
@@ -263,7 +337,7 @@ npm run typecheck
 npm test
 ```
 
-Tests live under `test/`, mirroring `src/` (`test/core`, `test/parsers`, `test/connectors`) plus a CLI smoke test. Run them with `npm test` (builds first, then `node --test`).
+Tests live under `test/`, mirroring `src/` (`test/core`, `test/parsers`, `test/connectors`, `test/forge`) plus a CLI smoke test. Run them with `npm test` (builds first, then `node --test`).
 
 ---
 

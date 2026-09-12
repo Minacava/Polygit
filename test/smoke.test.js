@@ -45,4 +45,10 @@ describe("cli smoke", () => {
     assert.ok(fs.existsSync(path.join(cwd, ".tm", "db.sqlite")));
     assert.ok(fs.existsSync(path.join(cwd, ".tmconfig.json")));
   });
+
+  it("exposes clone and publish in --help", () => {
+    const help = run(process.cwd(), ["--help"]);
+    assert.match(help, /\bclone\b/);
+    assert.match(help, /\bpublish\b/);
+  });
 });

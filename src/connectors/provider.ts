@@ -59,5 +59,8 @@ export function redactSecrets(message: string): string {
   return message
     .replace(/sk-[a-zA-Z0-9_-]{10,}/g, "sk-***")
     .replace(/sk-ant-[a-zA-Z0-9_-]{10,}/g, "sk-ant-***")
+    .replace(/glpat-[a-zA-Z0-9_-]{10,}/g, "glpat-***")
+    .replace(/ghp_[a-zA-Z0-9]{20,}/g, "ghp_***")
+    .replace(/github_pat_[a-zA-Z0-9_]{20,}/g, "github_pat_***")
     .replace(/Bearer\s+[a-zA-Z0-9._-]+/gi, "Bearer ***");
 }
