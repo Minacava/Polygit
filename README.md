@@ -3,6 +3,8 @@
 **Local-first CLI for assisted translation.**  
 Keep sources and translations in Git, reuse a translation memory, enforce a glossary, and call Claude or OpenAI only when you need them — no SaaS CAT tool required.
 
+Translate locally, approve in the terminal, then open a **GitHub pull request** or **GitLab merge request** for remote review and merge. Works with `github.com`, `gitlab.com`, and self-hosted GitLab.
+
 Polygit is aimed at freelancers, small teams, and open-source projects that translate documentation, websites, or app strings without standing up extra infrastructure.
 
 ---
@@ -15,14 +17,16 @@ Polygit is aimed at freelancers, small teams, and open-source projects that tran
 | Translations drift when terminology changes | Glossary sync marks affected segments project-wide |
 | Translation history lives in a black box | Sources + outputs are normal Git commits |
 | Every sentence hits an LLM | Exact / fuzzy TM matches first; LLM is the fallback |
+| No bridge from local CAT work to team review | `publish` opens a GitHub PR or GitLab MR after local approval |
 
 ---
 
 ## Requirements
 
 - **Node.js 20+**
-- A Git repository (Polygit can initialize one on `init`)
+- A Git repository (Polygit can initialize one on `init`, or clone with `polygit clone`)
 - Optional: an API key for [Anthropic (Claude)](https://www.anthropic.com/) or [OpenAI](https://openai.com/) when translating without a TM hit
+- Optional (for `publish`): `GITHUB_TOKEN` / `GH_TOKEN` or `GITLAB_TOKEN` / `GL_TOKEN`, plus normal Git credentials to push
 
 ---
 
@@ -124,6 +128,20 @@ Everything stays on disk. There is no Polygit cloud database.
 ---
 
 ## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `init` | Bootstrap `sources/`, `outputs/`, config, and local SQLite |
+| `clone` | Clone a GitHub/GitLab repo and run `init` |
+| `import` | Segment a source file |
+| `translate` | Translate via TM + optional LLM |
+| `glossary` | Add terms / mark stale after terminology changes |
+| `review` | Local interactive approval |
+| `commit` | Commit `sources/` + `outputs/` together |
+| `publish` | Local gate → push branch → GitHub PR or GitLab MR |
+| `status` | Coverage counts per document |
+
+---
 
 ### `init`
 
@@ -260,6 +278,13 @@ npx polygit publish --lang=fr --allow-unapproved   # skip local gate (not recomm
 | `--allow-unapproved` | Allow publish when segments are not locally approved |
 
 Requires a forge token in `.env` (`GITHUB_TOKEN` / `GH_TOKEN`, or `GITLAB_TOKEN` / `GL_TOKEN`). Git push still uses your normal Git credentials (SSH key or credential helper).
+
+**Forge detection** (from `origin`):
+
+| Remote host | Opens |
+| --- | --- |
+| `github.com` | Pull request |
+| `gitlab.com` or any other host (e.g. self-hosted GitLab) | Merge request |
 
 ---
 
