@@ -1,0 +1,56 @@
+{
+  "name": "polygit",
+  "version": "0.1.0",
+  "description": "Local-first CLI for assisted translation with translation memory, glossary propagation, Git integration, and LLM providers.",
+  "license": "MIT",
+  "author": "Marina Camacho",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Minacava/Polygit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Minacava/Polygit/issues"
+  },
+  "homepage": "https://github.com/Minacava/Polygit#readme",
+  "keywords": [
+    "translation",
+    "i18n",
+    "cli",
+    "translation-memory",
+    "glossary",
+    "git",
+    "llm",
+    "local-first",
+    "cat-tool"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "polygit": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build",
+    "security:audit": "npm audit --omit=dev"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}

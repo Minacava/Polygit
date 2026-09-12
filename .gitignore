@@ -1,0 +1,21 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Local Polygit project state (created by `polygit init`)
+.tm/
+.tmconfig.json
+.env
+.env.*
+!.env.example
+
+# npm auth (never commit tokens)
+.npmrc
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
