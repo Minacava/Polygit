@@ -260,8 +260,10 @@ git clone https://github.com/Minacava/Polygit.git
 cd Polygit
 npm install
 npm run typecheck
-npm run build
+npm test
 ```
+
+Tests live under `test/`, mirroring `src/` (`test/core`, `test/parsers`, `test/connectors`) plus a CLI smoke test. Run them with `npm test` (builds first, then `node --test`).
 
 ---
 
