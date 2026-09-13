@@ -23,7 +23,7 @@ export interface TmConfig {
 export const DEFAULT_CONFIG: TmConfig = {
   sourceLang: "en",
   targetLangs: [],
-  defaultProvider: "claude",
+  defaultProvider: "ollama",
   models: {},
 };
 

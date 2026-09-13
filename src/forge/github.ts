@@ -7,7 +7,10 @@ import type {
 } from "./types.js";
 import { ForgeApiError, ForgeAuthError } from "./types.js";
 
-export function createGitHubClient(token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN): ForgeClient {
+export function createGitHubClient(
+  token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN,
+  fetchImpl: typeof fetch = fetch,
+): ForgeClient {
   if (!token) {
     throw new ForgeAuthError(
       "github",
@@ -27,7 +30,7 @@ export function createGitHubClient(token = process.env.GITHUB_TOKEN ?? process.e
           ? "https://api.github.com"
           : `https://${repo.host}/api/v3`;
 
-      const response = await fetch(
+      const response = await fetchImpl(
         `${apiBase}/repos/${repo.owner}/${repo.name}/pulls`,
         {
           method: "POST",

@@ -38,13 +38,29 @@ describe("detectForgeFromRemoteUrl", () => {
     assert.equal(ref.fullPath, "org/repo");
   });
 
-  it("treats non-GitHub hosts as GitLab (self-hosted)", () => {
+  it("detects self-hosted GitLab hosts", () => {
     const ref = detectForgeFromRemoteUrl(
       "https://gitlab.example.com/team/app.git",
     );
     assert.equal(ref.kind, "gitlab");
     assert.equal(ref.host, "gitlab.example.com");
     assert.equal(ref.fullPath, "team/app");
+  });
+
+  it("detects GitHub Enterprise-style hosts", () => {
+    const ref = detectForgeFromRemoteUrl(
+      "https://github.mycompany.com/acme/docs.git",
+    );
+    assert.equal(ref.kind, "github");
+    assert.equal(ref.owner, "acme");
+    assert.equal(ref.name, "docs");
+  });
+
+  it("rejects unknown forge hosts without --forge", () => {
+    assert.throws(
+      () => detectForgeFromRemoteUrl("https://bitbucket.org/acme/docs.git"),
+      /Cannot detect forge/,
+    );
   });
 
   it("parses ssh:// git URLs", () => {

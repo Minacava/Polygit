@@ -9,6 +9,7 @@ import { ForgeApiError, ForgeAuthError } from "./types.js";
 
 export function createGitLabClient(
   token = process.env.GITLAB_TOKEN ?? process.env.GL_TOKEN,
+  fetchImpl: typeof fetch = fetch,
 ): ForgeClient {
   if (!token) {
     throw new ForgeAuthError(
@@ -27,7 +28,7 @@ export function createGitLabClient(
       const apiBase = `https://${repo.host}/api/v4`;
       const projectId = encodeURIComponent(repo.fullPath);
 
-      const response = await fetch(`${apiBase}/projects/${projectId}/merge_requests`, {
+      const response = await fetchImpl(`${apiBase}/projects/${projectId}/merge_requests`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
