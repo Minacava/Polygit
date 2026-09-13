@@ -18,6 +18,8 @@ import {
 import { createForgeClient, detectForgeFromRemoteUrl } from "../forge/index.js";
 
 export interface PublishOptions {
+  /** Override forge detection (github | gitlab). */
+  forge?: "github" | "gitlab";
   lang?: string;
   branch?: string;
   title?: string;
@@ -33,17 +35,15 @@ export interface PublishOptions {
  * Local approval → commit → push branch → open GitHub PR or GitLab MR.
  */
 export async function runPublish(options: PublishOptions = {}): Promise<void> {
-  const root = requireProjectRoot();
-  const remoteUrl = await getRemoteUrl(root);
-  if (!remoteUrl) {
+  if (!options.lang) {
     throw new Error(
-      `No git remote "origin" found. Clone with "polygit clone <url>" or add a remote first.`,
+      `Language is required. Pass --lang=<code> (e.g. polygit publish --lang=fr).`,
     );
   }
 
-  const repo = detectForgeFromRemoteUrl(remoteUrl);
-  const forge = createForgeClient(repo.kind);
+  const root = requireProjectRoot();
 
+  // Approval gates first (before remote/forge auth errors).
   const db = openProjectDb(root);
   let unapproved = 0;
   let approved = 0;
@@ -57,14 +57,24 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
   if (!options.allowUnapproved && unapproved > 0) {
     throw new Error(
       `${unapproved} translated segment(s) are not locally approved yet. ` +
-        `Run "polygit review --lang=<lang>" to approve them, or pass --allow-unapproved.`,
+        `Run "polygit review --lang=${options.lang}" to approve them, or pass --allow-unapproved.`,
     );
   }
   if (approved === 0 && !options.allowUnapproved) {
     throw new Error(
-      `No locally approved translations found. Run "polygit review --lang=<lang>" first.`,
+      `No locally approved translations found. Run "polygit review --lang=${options.lang}" first.`,
     );
   }
+
+  const remoteUrl = await getRemoteUrl(root);
+  if (!remoteUrl) {
+    throw new Error(
+      `No git remote "origin" found. Clone with "polygit clone <url>" or add a remote first.`,
+    );
+  }
+
+  const repo = detectForgeFromRemoteUrl(remoteUrl, options.forge);
+  const forge = createForgeClient(repo.kind);
 
   const targetBranch = options.targetBranch ?? (await getDefaultRemoteBranch(root));
   const sourceBranch =

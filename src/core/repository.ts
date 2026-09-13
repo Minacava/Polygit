@@ -6,6 +6,7 @@ import type {
   SegmentRow,
   SegmentStatus,
   TranslationMemoryRow,
+  TranslationLangStatus,
   TranslationRow,
   TranslationSource,
 } from "./db.js";
@@ -128,7 +129,7 @@ export function listSegmentsForTranslate(
     FROM segments s
     JOIN documents d ON d.id = s.document_id
     LEFT JOIN translations t ON t.segment_id = s.id AND t.lang = ?
-    WHERE (t.id IS NULL OR s.status = 'stale')
+    WHERE (t.id IS NULL OR t.status = 'stale')
   `;
 
   if (opts.documentPath) {
@@ -161,27 +162,35 @@ export function upsertTranslation(
   approved = false,
 ): void {
   const ts = nowIso();
+  const langStatus = approved ? "approved" : "translated";
   const existing = db
     .prepare(`SELECT id FROM translations WHERE segment_id = ? AND lang = ?`)
     .get(segmentId, lang) as { id: string } | undefined;
 
   if (existing) {
     db.prepare(
-      `UPDATE translations SET target_text = ?, source = ?, approved = ?, updated_at = ? WHERE id = ?`,
-    ).run(targetText, source, approved ? 1 : 0, ts, existing.id);
+      `UPDATE translations SET target_text = ?, source = ?, status = ?, approved = ?, updated_at = ? WHERE id = ?`,
+    ).run(targetText, source, langStatus, approved ? 1 : 0, ts, existing.id);
   } else {
     db.prepare(
-      `INSERT INTO translations (id, segment_id, lang, target_text, source, approved, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(createId("tr"), segmentId, lang, targetText, source, approved ? 1 : 0, ts);
+      `INSERT INTO translations (id, segment_id, lang, target_text, source, status, approved, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(createId("tr"), segmentId, lang, targetText, source, langStatus, approved ? 1 : 0, ts);
   }
 
-  const status: SegmentStatus = approved ? "approved" : "translated";
-  db.prepare(`UPDATE segments SET status = ?, updated_at = ? WHERE id = ?`).run(
-    status,
-    ts,
-    segmentId,
-  );
+  // Keep segment row as a coarse rollup only (pending → translated once any lang exists).
+  // Do not overwrite approved/stale of other languages via this global field.
+  const seg = db
+    .prepare(`SELECT status FROM segments WHERE id = ?`)
+    .get(segmentId) as { status: SegmentStatus } | undefined;
+  if (seg && seg.status === "pending") {
+    db.prepare(`UPDATE segments SET status = 'translated', updated_at = ? WHERE id = ?`).run(
+      ts,
+      segmentId,
+    );
+  } else {
+    db.prepare(`UPDATE segments SET updated_at = ? WHERE id = ?`).run(ts, segmentId);
+  }
 }
 
 export function upsertTranslationMemory(
@@ -279,9 +288,15 @@ export function rebuildGlossaryUsage(db: Database.Database, glossaryId?: string)
     );
 
     for (const term of terms) {
-      const needle = term.source_term.toLocaleLowerCase();
+      const needle = term.source_term.trim();
+      if (!needle) continue;
+      // Word-boundary match (case-insensitive); escapes regex metacharacters.
+      const pattern = new RegExp(
+        `(?:^|[^\\p{L}\\p{N}_])${escapeRegExp(needle)}(?:[^\\p{L}\\p{N}_]|$)`,
+        "iu",
+      );
       for (const segment of segments) {
-        if (segment.source_text.toLocaleLowerCase().includes(needle)) {
+        if (pattern.test(segment.source_text)) {
           insert.run(term.id, segment.id);
           links += 1;
         }
@@ -295,6 +310,7 @@ export function rebuildGlossaryUsage(db: Database.Database, glossaryId?: string)
 export function markGlossarySegmentsStale(
   db: Database.Database,
   glossaryIds: string[],
+  lang?: string,
 ): string[] {
   if (glossaryIds.length === 0) return [];
   const ts = nowIso();
@@ -305,10 +321,31 @@ export function markGlossarySegmentsStale(
       segmentIds.add(row.segment_id);
     }
   }
-  const update = db.prepare(
-    `UPDATE segments SET status = 'stale', updated_at = ? WHERE id = ?`,
-  );
-  for (const segmentId of segmentIds) update.run(ts, segmentId);
+
+  // Prefer per-language stale on translations; fall back to segment stale only when lang omitted.
+  if (lang) {
+    const updateExisting = db.prepare(
+      `UPDATE translations
+       SET status = 'stale', approved = 0, updated_at = ?
+       WHERE segment_id = ? AND lang = ?`,
+    );
+    for (const segmentId of segmentIds) {
+      updateExisting.run(ts, segmentId, lang);
+    }
+  } else {
+    // Legacy: mark segment stale (affects all langs via list query only if translation missing status — avoided).
+    // Still clear approved on ALL translation rows for those segments so publish gate blocks.
+    const updateSeg = db.prepare(
+      `UPDATE segments SET status = 'stale', updated_at = ? WHERE id = ?`,
+    );
+    const updateTr = db.prepare(
+      `UPDATE translations SET status = 'stale', approved = 0, updated_at = ? WHERE segment_id = ?`,
+    );
+    for (const segmentId of segmentIds) {
+      updateSeg.run(ts, segmentId);
+      updateTr.run(ts, segmentId);
+    }
+  }
   return [...segmentIds];
 }
 
@@ -347,8 +384,8 @@ export function getTranslationMap(
 
 export function listReviewSegments(
   db: Database.Database,
-  opts: { lang?: string; status?: SegmentStatus },
-): Array<SegmentRow & { document_path: string; target_text: string | null }> {
+  opts: { lang?: string; status?: SegmentStatus | TranslationLangStatus },
+): Array<SegmentRow & { document_path: string; target_text: string | null; translation_status: string | null }> {
   const params: unknown[] = [];
   let sql = `
     SELECT s.*, d.path AS document_path,
@@ -360,27 +397,53 @@ export function listReviewSegments(
     sql += ` AND t.lang = ?`;
     params.push(opts.lang);
   }
-  sql += ` ORDER BY t.updated_at DESC LIMIT 1) AS target_text
+  sql += ` ORDER BY t.updated_at DESC LIMIT 1) AS target_text,
+      (
+        SELECT t.status FROM translations t
+        WHERE t.segment_id = s.id
+  `;
+  if (opts.lang) {
+    sql += ` AND t.lang = ?`;
+    params.push(opts.lang);
+  }
+  sql += ` ORDER BY t.updated_at DESC LIMIT 1) AS translation_status
     FROM segments s
     JOIN documents d ON d.id = s.document_id
     WHERE 1=1`;
-  if (opts.status) {
+
+  if (opts.lang && opts.status) {
+    // Prefer per-lang translation status when reviewing a language.
+    sql += ` AND EXISTS (
+      SELECT 1 FROM translations t
+      WHERE t.segment_id = s.id AND t.lang = ? AND t.status = ?
+    )`;
+    params.push(opts.lang, opts.status);
+  } else if (opts.status) {
     sql += ` AND s.status = ?`;
     params.push(opts.status);
   }
+
   sql += ` ORDER BY d.path, s.order_index`;
   return db.prepare(sql).all(...params) as Array<
-    SegmentRow & { document_path: string; target_text: string | null }
+    SegmentRow & {
+      document_path: string;
+      target_text: string | null;
+      translation_status: string | null;
+    }
   >;
 }
 
-export function getStatusCounts(db: Database.Database): Array<{
+export function getStatusCounts(
+  db: Database.Database,
+  lang?: string,
+): Array<{
   path: string;
   pending: number;
   translated: number;
   stale: number;
   approved: number;
   total: number;
+  lang?: string;
 }> {
   const docs = db.prepare(`SELECT id, path FROM documents ORDER BY path`).all() as Array<{
     id: string;
@@ -388,17 +451,48 @@ export function getStatusCounts(db: Database.Database): Array<{
   }>;
 
   return docs.map((doc) => {
+    const totalRow = db
+      .prepare(`SELECT COUNT(*) AS n FROM segments WHERE document_id = ?`)
+      .get(doc.id) as { n: number };
+    const total = totalRow.n;
+
+    if (!lang) {
+      const rows = db
+        .prepare(
+          `SELECT status, COUNT(*) AS n FROM segments WHERE document_id = ? GROUP BY status`,
+        )
+        .all(doc.id) as Array<{ status: SegmentStatus; n: number }>;
+      const counts = { pending: 0, translated: 0, stale: 0, approved: 0, total };
+      for (const row of rows) {
+        counts[row.status] = row.n;
+      }
+      return { path: doc.path, ...counts };
+    }
+
     const rows = db
       .prepare(
-        `SELECT status, COUNT(*) AS n FROM segments WHERE document_id = ? GROUP BY status`,
+        `SELECT t.status AS status, COUNT(*) AS n
+         FROM translations t
+         JOIN segments s ON s.id = t.segment_id
+         WHERE s.document_id = ? AND t.lang = ?
+         GROUP BY t.status`,
       )
-      .all(doc.id) as Array<{ status: SegmentStatus; n: number }>;
-    const counts = { pending: 0, translated: 0, stale: 0, approved: 0, total: 0 };
-    for (const row of rows) {
-      counts[row.status] = row.n;
-      counts.total += row.n;
-    }
-    return { path: doc.path, ...counts };
+      .all(doc.id, lang) as Array<{ status: TranslationLangStatus; n: number }>;
+
+    const translated = rows.find((r) => r.status === "translated")?.n ?? 0;
+    const stale = rows.find((r) => r.status === "stale")?.n ?? 0;
+    const approved = rows.find((r) => r.status === "approved")?.n ?? 0;
+    const covered = translated + stale + approved;
+    const pending = Math.max(0, total - covered);
+    return {
+      path: doc.path,
+      pending,
+      translated,
+      stale,
+      approved,
+      total,
+      lang,
+    };
   });
 }
 
@@ -410,17 +504,16 @@ export function countUnapprovedTranslations(
   if (lang) {
     const row = db
       .prepare(
-        `SELECT COUNT(*) AS n FROM segments s
-         JOIN translations t ON t.segment_id = s.id
-         WHERE t.lang = ? AND s.status = 'translated' AND t.approved = 0`,
+        `SELECT COUNT(*) AS n FROM translations t
+         WHERE t.lang = ? AND (t.approved = 0 OR t.status = 'stale')`,
       )
       .get(lang) as { n: number };
     return row.n;
   }
   const row = db
     .prepare(
-      `SELECT COUNT(*) AS n FROM segments s
-       WHERE s.status = 'translated'`,
+      `SELECT COUNT(*) AS n FROM translations t
+       WHERE t.approved = 0 OR t.status = 'stale'`,
     )
     .get() as { n: number };
   return row.n;
@@ -445,3 +538,8 @@ export function countApprovedTranslations(
   return row.n;
 }
 
+
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

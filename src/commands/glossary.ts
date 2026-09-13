@@ -57,6 +57,7 @@ export async function runGlossarySync(options: GlossarySyncOptions = {}): Promis
     staleIds = markGlossarySegmentsStale(
       db,
       terms.map((t) => t.id),
+      options.lang,
     );
     console.log(`Marked ${staleIds.length} segment(s) as stale.`);
   } finally {

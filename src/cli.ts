@@ -70,7 +70,8 @@ program
   .option("--provider <name>", "claude | openai | ollama | huggingface")
   .option("--model <id>", "Model id/tag for the selected provider")
   .option("--dry-run", "Show plan without writing or calling the LLM", false)
-  .action(async (lang: string, opts: { doc?: string; provider?: string; model?: string; dryRun?: boolean }) => {
+  .option("--accept-fuzzy", "Apply fuzzy TM matches as unapproved drafts (skip LLM)", false)
+  .action(async (lang: string, opts: { doc?: string; provider?: string; model?: string; dryRun?: boolean; acceptFuzzy?: boolean }) => {
     let provider: ProviderName | undefined;
     if (opts.provider !== undefined) {
       if (!isProviderName(opts.provider)) {
@@ -85,6 +86,7 @@ program
       ...(provider !== undefined ? { provider } : {}),
       ...(opts.model ? { model: opts.model } : {}),
       dryRun: Boolean(opts.dryRun),
+      acceptFuzzy: Boolean(opts.acceptFuzzy),
     });
   });
 
@@ -119,7 +121,7 @@ glossary
 program
   .command("review")
   .description("Interactively approve or edit translations")
-  .option("--lang <lang>", "Language to review")
+  .requiredOption("--lang <lang>", "Language to review")
   .option("--status <status>", "pending | translated | stale | approved")
   .action(async (opts: { lang?: string; status?: string }) => {
     const status = opts.status as SegmentStatus | undefined;
@@ -155,7 +157,8 @@ program
   .description(
     "After local review: commit, push a branch, and open a GitHub PR or GitLab MR",
   )
-  .option("--lang <lang>", "Language being published (used in branch/title)")
+  .requiredOption("--lang <lang>", "Language being published")
+  .option("--forge <kind>", "github | gitlab (override host detection)")
   .option("--branch <name>", "Source branch name to push")
   .option("--target-branch <name>", "Base branch for the PR/MR (default: remote HEAD)")
   .option("--title <title>", "PR/MR title")
@@ -166,6 +169,7 @@ program
   .action(
     async (opts: {
       lang?: string;
+      forge?: string;
       branch?: string;
       targetBranch?: string;
       title?: string;
@@ -174,8 +178,14 @@ program
       yes?: boolean;
       allowUnapproved?: boolean;
     }) => {
+      if (opts.forge && opts.forge !== "github" && opts.forge !== "gitlab") {
+        throw new Error(`Unsupported forge: ${opts.forge}. Use github or gitlab.`);
+      }
       await runPublish({
         ...(opts.lang ? { lang: opts.lang } : {}),
+        ...(opts.forge === "github" || opts.forge === "gitlab"
+          ? { forge: opts.forge }
+          : {}),
         ...(opts.branch ? { branch: opts.branch } : {}),
         ...(opts.targetBranch ? { targetBranch: opts.targetBranch } : {}),
         ...(opts.title ? { title: opts.title } : {}),
@@ -219,8 +229,9 @@ models
 program
   .command("status")
   .description("Show pending/stale/translated/approved counts")
-  .action(() => {
-    runStatus();
+  .option("--lang <lang>", "Show per-language translation status")
+  .action((opts: { lang?: string }) => {
+    runStatus(opts.lang ? { lang: opts.lang } : {});
   });
 
 async function main(): Promise<void> {

@@ -61,10 +61,7 @@ export async function runInit(cwd = process.cwd()): Promise<void> {
     writeConfig(root, { ...DEFAULT_CONFIG });
   }
 
-  const gitignorePath = path.join(root, ".gitignore");
-  if (!fs.existsSync(gitignorePath)) {
-    fs.writeFileSync(gitignorePath, PROJECT_GITIGNORE, "utf8");
-  }
+  ensureGitignore(root);
 
   const envExamplePath = path.join(root, ".env.example");
   if (!fs.existsSync(envExamplePath)) {
@@ -80,4 +77,33 @@ export async function runInit(cwd = process.cwd()): Promise<void> {
     `  created: sources/, outputs/, ${CONFIG_FILENAME}, .tm/db.sqlite, .gitignore, .env.example`,
   );
   if (createdGit) console.log("  created: git repository");
+}
+
+
+/** Create or merge Polygit ignore rules into an existing .gitignore. */
+function ensureGitignore(root: string): void {
+  const gitignorePath = path.join(root, ".gitignore");
+  const required = [".tm/", ".env", ".env.*", "!.env.example"];
+  if (!fs.existsSync(gitignorePath)) {
+    fs.writeFileSync(gitignorePath, PROJECT_GITIGNORE, "utf8");
+    return;
+  }
+  const current = fs.readFileSync(gitignorePath, "utf8");
+  const lines = new Set(
+    current
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean),
+  );
+  const missing = required.filter((rule) => {
+    if (rule === ".env.*") return ![...lines].some((l) => l === ".env.*" || l === ".env.local");
+    return !lines.has(rule);
+  });
+  if (missing.length === 0) return;
+  const addition =
+    (current.endsWith("\n") || current.length === 0 ? "" : "\n") +
+    "\n# Polygit local state\n" +
+    missing.join("\n") +
+    "\n";
+  fs.appendFileSync(gitignorePath, addition, "utf8");
 }

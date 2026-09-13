@@ -11,6 +11,9 @@ export type SegmentStatus = "pending" | "translated" | "stale" | "approved";
 
 export type TranslationSource = "tm-exact" | "tm-fuzzy" | "llm" | "manual";
 
+/** Per-language workflow status (lives on translations, not segments). */
+export type TranslationLangStatus = "translated" | "stale" | "approved";
+
 export interface DocumentRow {
   id: string;
   path: string;
@@ -35,6 +38,8 @@ export interface TranslationRow {
   lang: string;
   target_text: string;
   source: TranslationSource;
+  /** Per-language status: translated | stale | approved */
+  status: TranslationLangStatus;
   approved: number;
   updated_at: string;
 }
@@ -92,12 +97,18 @@ CREATE TABLE IF NOT EXISTS translations (
   lang TEXT NOT NULL,
   target_text TEXT NOT NULL,
   source TEXT NOT NULL CHECK (source IN ('tm-exact', 'tm-fuzzy', 'llm', 'manual')),
+  status TEXT NOT NULL DEFAULT 'translated' CHECK (status IN ('translated', 'stale', 'approved')),
   approved INTEGER NOT NULL DEFAULT 0 CHECK (approved IN (0, 1)),
   updated_at TEXT NOT NULL,
   UNIQUE (segment_id, lang)
 );
 
 CREATE INDEX IF NOT EXISTS idx_translations_lang ON translations(lang);
+CREATE INDEX IF NOT EXISTS idx_translations_status ON translations(status);
+
+CREATE TABLE IF NOT EXISTS schema_version (
+  version INTEGER NOT NULL PRIMARY KEY
+);
 
 CREATE TABLE IF NOT EXISTS translation_memory (
   id TEXT PRIMARY KEY,
@@ -108,7 +119,7 @@ CREATE TABLE IF NOT EXISTS translation_memory (
   updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_tm_lang_source ON translation_memory(lang, source_text);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tm_lang_source_unique ON translation_memory(lang, source_text);
 
 CREATE TABLE IF NOT EXISTS glossary (
   id TEXT PRIMARY KEY,
@@ -139,6 +150,38 @@ export function resolveDbPath(projectRoot: string): string {
  * Opens (or creates) the project SQLite database and applies the schema.
  * Creates `.tm/` when missing.
  */
+
+const SCHEMA_VERSION = 2;
+
+function ensureSchemaUpgrades(db: Database.Database): void {
+  // translations.status (per-language workflow)
+  const trCols = db.prepare(`PRAGMA table_info(translations)`).all() as Array<{ name: string }>;
+  if (!trCols.some((c) => c.name === "status")) {
+    db.exec(`ALTER TABLE translations ADD COLUMN status TEXT NOT NULL DEFAULT 'translated'`);
+    db.exec(`
+      UPDATE translations
+      SET status = CASE WHEN approved = 1 THEN 'approved' ELSE 'translated' END
+    `);
+  }
+
+  // Unique TM index (ignore failure if duplicates exist)
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tm_lang_source_unique ON translation_memory(lang, source_text)`);
+  } catch {
+    // Duplicate TM rows may exist in older DBs; non-fatal.
+  }
+
+  db.exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL PRIMARY KEY)`);
+  const row = db.prepare(`SELECT version FROM schema_version LIMIT 1`).get() as
+    | { version: number }
+    | undefined;
+  if (!row) {
+    db.prepare(`INSERT INTO schema_version (version) VALUES (?)`).run(SCHEMA_VERSION);
+  } else if (row.version < SCHEMA_VERSION) {
+    db.prepare(`UPDATE schema_version SET version = ?`).run(SCHEMA_VERSION);
+  }
+}
+
 export function openDatabase(projectRoot: string): Database.Database {
   const dbPath = resolveDbPath(projectRoot);
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -147,6 +190,7 @@ export function openDatabase(projectRoot: string): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA_SQL);
+  ensureSchemaUpgrades(db);
   return db;
 }
 
@@ -154,4 +198,5 @@ export function openDatabase(projectRoot: string): Database.Database {
 export function migrate(db: Database.Database): void {
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA_SQL);
+  ensureSchemaUpgrades(db);
 }

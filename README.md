@@ -38,11 +38,12 @@ cp /path/to/intro.md sources/intro.md
 # 3. Import segments
 polygit import sources/intro.md --format=markdown
 
-# 4. Pick Ollama as default provider + model
+# 4. Pick Ollama model (default provider is already ollama after init)
 polygit models use ollama llama3.2
 
-# 5. Translate (TM first, then Ollama on misses)
+# 5. Translate (TM exact first; fuzzy falls through to LLM unless --accept-fuzzy)
 polygit translate fr
+# polygit translate fr --accept-fuzzy   # optional: keep fuzzy hits as unapproved drafts
 
 # 6. Review in the terminal (edits are written to outputs/)
 polygit review --lang=fr
@@ -129,22 +130,25 @@ Segments already translated for `fr` are translated again for `es` when `es` has
 | `init` | Create `sources/`, `outputs/`, `.tmconfig.json`, `.tm/`, `.gitignore`, `.env.example` |
 | `clone <url>` | Clone a repo and run `init` (unless `--no-init`) |
 | `import <file>` | Split a file under `sources/` into segments |
-| `translate <lang>` | TM exact → TM fuzzy → LLM; write `outputs/<lang>/` |
+| `translate <lang>` | TM exact → (optional fuzzy draft) → LLM; write `outputs/<lang>/` |
 | `models list` | Show effective models (+ local Ollama tags) |
 | `models use <provider> <model>` | Save model **and** set default provider |
-| `glossary add` / `glossary sync` | Preferred terms; sync marks stale (optional retranslate) |
-| `review --lang=<lang>` | Approve / edit in the terminal (updates `outputs/`) |
+| `glossary add` / `glossary sync` | Preferred terms; sync marks **that lang** stale (optional retranslate) |
+| `review --lang=<lang>` | Approve / edit in the terminal (updates `outputs/`; `--lang` required) |
 | `commit` | Commit only `sources/` + `outputs/` |
-| `publish` | After approval: commit → push branch → GitHub PR or GitLab MR |
-| `status` | Pending / stale / translated / approved counts per document |
+| `publish --lang=<lang>` | After approval: commit → push branch → GitHub PR or GitLab MR |
+| `status [--lang=<lang>]` | Counts per document (optional per-language breakdown) |
 
 ### Useful flags
 
 ```bash
 polygit translate fr --provider=ollama --model=mistral --dry-run
+polygit translate fr --accept-fuzzy
 polygit translate fr --doc=sources/intro.md
 polygit review --lang=fr --status=translated
+polygit status --lang=fr
 polygit publish --lang=fr --draft --yes
+polygit publish --lang=fr --forge=gitlab --yes
 polygit publish --lang=fr --allow-unapproved   # skip local approval (not recommended)
 ```
 
@@ -217,7 +221,7 @@ Polygit does **not** log you into GitHub/GitLab. It reuses Git + a forge token.
 | Local work | No forge account |
 | `publish` | Git push access **and** `GITHUB_TOKEN` or `GITLAB_TOKEN` |
 
-Non-`github.com` remotes are treated as **GitLab** (including self-hosted).
+Non-`github.com` remotes that look like GitLab (`gitlab.*`) are treated as **GitLab**. GitHub Enterprise hosts (`github.*`) are treated as **GitHub**. Unknown hosts require `--forge=github|gitlab`.
 
 ---
 
