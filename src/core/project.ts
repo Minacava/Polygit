@@ -1,9 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import {
+  parseProviderName,
+  type ProviderName,
+} from "../connectors/provider.js";
 import { openDatabase } from "./db.js";
 
-export type ProviderName = "claude" | "openai";
+export type { ProviderName };
 
 export interface TmConfig {
   sourceLang: string;
@@ -45,7 +49,7 @@ export function readConfig(projectRoot: string): TmConfig {
   return {
     sourceLang: raw.sourceLang ?? DEFAULT_CONFIG.sourceLang,
     targetLangs: Array.isArray(raw.targetLangs) ? raw.targetLangs : [],
-    defaultProvider: raw.defaultProvider === "openai" ? "openai" : "claude",
+    defaultProvider: parseProviderName(raw.defaultProvider),
   };
 }
 

@@ -14,7 +14,7 @@ import { runTranslate } from "./commands/translate.js";
 import type { DocumentFormat, SegmentStatus } from "./core/db.js";
 import { findProjectRoot } from "./core/project.js";
 import { getPackageVersion } from "./version.js";
-import { redactSecrets } from "./connectors/index.js";
+import { isProviderName, redactSecrets, type ProviderName } from "./connectors/index.js";
 
 const projectRoot = findProjectRoot() ?? process.cwd();
 loadDotenv({ path: path.join(projectRoot, ".env"), quiet: true });
@@ -66,16 +66,21 @@ program
   .description("Translate pending/stale segments for a language")
   .argument("<lang>", "Target language code (e.g. fr, es)")
   .option("--doc <path>", "Limit to one source document")
-  .option("--provider <name>", "claude | openai")
+  .option("--provider <name>", "claude | openai | ollama | huggingface")
   .option("--dry-run", "Show plan without writing or calling the LLM", false)
   .action(async (lang: string, opts: { doc?: string; provider?: string; dryRun?: boolean }) => {
-    const provider = opts.provider as "claude" | "openai" | undefined;
-    if (provider && provider !== "claude" && provider !== "openai") {
-      throw new Error(`Unsupported provider: ${provider}`);
+    let provider: ProviderName | undefined;
+    if (opts.provider !== undefined) {
+      if (!isProviderName(opts.provider)) {
+        throw new Error(
+          `Unsupported provider: ${opts.provider}. Use claude, openai, ollama, or huggingface.`,
+        );
+      }
+      provider = opts.provider;
     }
     await runTranslate(lang, {
       ...(opts.doc ? { doc: opts.doc } : {}),
-      ...(provider ? { provider } : {}),
+      ...(provider !== undefined ? { provider } : {}),
       dryRun: Boolean(opts.dryRun),
     });
   });

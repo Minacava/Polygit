@@ -5,8 +5,17 @@ export interface TranslateContext {
   notes?: string;
 }
 
+export const PROVIDER_NAMES = [
+  "claude",
+  "openai",
+  "ollama",
+  "huggingface",
+] as const;
+
+export type ProviderName = (typeof PROVIDER_NAMES)[number];
+
 export interface TranslationProvider {
-  readonly name: "claude" | "openai";
+  readonly name: ProviderName;
   translateSegment(
     text: string,
     sourceLang: string,
@@ -15,7 +24,16 @@ export interface TranslationProvider {
   ): Promise<string>;
 }
 
-export type ProviderName = TranslationProvider["name"];
+export function isProviderName(value: string): value is ProviderName {
+  return (PROVIDER_NAMES as readonly string[]).includes(value);
+}
+
+export function parseProviderName(
+  value: unknown,
+  fallback: ProviderName = "claude",
+): ProviderName {
+  return typeof value === "string" && isProviderName(value) ? value : fallback;
+}
 
 export function buildTranslationMessages(
   text: string,
@@ -62,5 +80,6 @@ export function redactSecrets(message: string): string {
     .replace(/glpat-[a-zA-Z0-9_-]{10,}/g, "glpat-***")
     .replace(/ghp_[a-zA-Z0-9]{20,}/g, "ghp_***")
     .replace(/github_pat_[a-zA-Z0-9_]{20,}/g, "github_pat_***")
+    .replace(/hf_[a-zA-Z0-9]{20,}/g, "hf_***")
     .replace(/Bearer\s+[a-zA-Z0-9._-]+/gi, "Bearer ***");
 }
