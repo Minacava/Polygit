@@ -46,13 +46,13 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
   const db = openProjectDb(root);
   try {
     const segments = listSegmentsForTranslate(db, {
+      lang,
       ...(documentPath ? { documentPath } : {}),
       ...(options.segmentIds ? { segmentIds: options.segmentIds } : {}),
-      statuses: ["pending", "stale"],
     });
 
     if (segments.length === 0) {
-      console.log(`No pending/stale segments to translate for lang=${lang}.`);
+      console.log(`No segments need translation for lang=${lang}.`);
       return;
     }
 
