@@ -135,6 +135,7 @@ Everything stays on disk. There is no Polygit cloud database.
 | `clone` | Clone a GitHub/GitLab repo and run `init` |
 | `import` | Segment a source file |
 | `translate` | Translate via TM + optional LLM |
+| `models` | List local/curated models; save default with `models use` |
 | `glossary` | Add terms / mark stale after terminology changes |
 | `review` | Local interactive approval |
 | `commit` | Commit `sources/` + `outputs/` together |
@@ -201,6 +202,7 @@ npx polygit translate es --provider=openai --dry-run
 | --- | --- |
 | `--doc=<path>` | Limit work to one source file |
 | `--provider=claude\|openai\|ollama\|huggingface` | LLM used when TM misses |
+| `--model=<id>` | Model id/tag (overrides config/env for this run) |
 | `--dry-run` | Show what would be translated without writing |
 
 Lookup order: **TM exact → TM fuzzy → LLM**.
@@ -361,24 +363,47 @@ Polygit uses a small pluggable provider interface. Lookup order is always **TM e
 | --- | --- | --- | --- | --- |
 | Claude | `--provider=claude` | `ANTHROPIC_API_KEY` | `claude-3-5-haiku-latest` | Anthropic Messages API |
 | OpenAI | `--provider=openai` | `OPENAI_API_KEY` | `gpt-4o-mini` | Chat Completions API |
-| Ollama | `--provider=ollama` | None (local) | `llama3.2` | Requires [Ollama](https://ollama.com/) installed and running (`ollama serve`) |
+| Ollama | `--provider=ollama` | None (local) | `llama3.2` (or auto) | Requires [Ollama](https://ollama.com/) installed and running (`ollama serve`) |
 | Hugging Face | `--provider=huggingface` | `HF_TOKEN` | `meta-llama/Meta-Llama-3-8B-Instruct` | HF Inference Providers (OpenAI-compatible router) |
 
-Set the default in `.tmconfig.json`:
+#### Choosing a model (easy path)
+
+```bash
+# See effective models + local Ollama installs (* marks the one in use)
+npx polygit models list
+npx polygit models list --provider=ollama
+
+# Save a default model for a provider (writes .tmconfig.json → models)
+npx polygit models use ollama qwen2.5:7b
+npx polygit models use huggingface mistralai/Mistral-7B-Instruct-v0.3
+
+# One-off override on translate
+npx polygit translate fr --provider=ollama --model=mistral
+```
+
+**Resolution order:** CLI `--model` → `.tmconfig.json` `models.<provider>` → env (`POLYGIT_*_MODEL`) → Ollama auto-pick if exactly one local model → built-in default.
+
+If Ollama has **several** models and none is configured, an interactive TTY picker asks which to use (or pass `--model` / `models use` in non-interactive shells).
+
+Example `.tmconfig.json`:
 
 ```json
 {
-  "defaultProvider": "ollama"
+  "defaultProvider": "ollama",
+  "models": {
+    "ollama": "qwen2.5:7b",
+    "huggingface": "meta-llama/Meta-Llama-3-8B-Instruct"
+  }
 }
 ```
 
-Override the model with environment variables:
+Optional environment overrides (still supported):
 
 | Variable | Provider |
 | --- | --- |
 | `POLYGIT_CLAUDE_MODEL` | Claude |
 | `POLYGIT_OPENAI_MODEL` | OpenAI |
-| `POLYGIT_OLLAMA_MODEL` | Ollama (must be pulled locally, e.g. `ollama pull llama3.2`) |
+| `POLYGIT_OLLAMA_MODEL` | Ollama |
 | `POLYGIT_HF_MODEL` | Hugging Face |
 | `OLLAMA_HOST` | Ollama base URL (default `http://127.0.0.1:11434`) |
 
@@ -387,12 +412,12 @@ Override the model with environment variables:
 ```bash
 ollama pull llama3.2
 ollama serve   # if not already running
+npx polygit models list --provider=ollama
 npx polygit translate fr --provider=ollama
 ```
 
 Adding a new cloud or local backend: implement `TranslationProvider` in `src/connectors/` (or reuse `createChatCompletionsProvider` for OpenAI-compatible APIs) and register it in `createProvider`.
 
----
 
 ## Supported formats
 

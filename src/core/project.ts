@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import {
+  isProviderName,
   parseProviderName,
   type ProviderName,
 } from "../connectors/provider.js";
@@ -9,16 +10,21 @@ import { openDatabase } from "./db.js";
 
 export type { ProviderName };
 
+export type ProviderModels = Partial<Record<ProviderName, string>>;
+
 export interface TmConfig {
   sourceLang: string;
   targetLangs: string[];
   defaultProvider: ProviderName;
+  /** Optional per-provider model ids (e.g. Ollama tag or HF model id). */
+  models: ProviderModels;
 }
 
 export const DEFAULT_CONFIG: TmConfig = {
   sourceLang: "en",
   targetLangs: [],
   defaultProvider: "claude",
+  models: {},
 };
 
 export const CONFIG_FILENAME = ".tmconfig.json";
@@ -50,7 +56,18 @@ export function readConfig(projectRoot: string): TmConfig {
     sourceLang: raw.sourceLang ?? DEFAULT_CONFIG.sourceLang,
     targetLangs: Array.isArray(raw.targetLangs) ? raw.targetLangs : [],
     defaultProvider: parseProviderName(raw.defaultProvider),
+    models: parseProviderModels(raw.models),
   };
+}
+
+function parseProviderModels(value: unknown): ProviderModels {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: ProviderModels = {};
+  for (const [key, model] of Object.entries(value as Record<string, unknown>)) {
+    if (!isProviderName(key)) continue;
+    if (typeof model === "string" && model.trim()) out[key] = model.trim();
+  }
+  return out;
 }
 
 export function writeConfig(projectRoot: string, config: TmConfig): void {

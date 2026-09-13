@@ -46,9 +46,10 @@ describe("cli smoke", () => {
     assert.ok(fs.existsSync(path.join(cwd, ".tmconfig.json")));
   });
 
-  it("exposes clone and publish in --help", () => {
+  it("exposes clone, publish, and models in --help", () => {
     const help = run(process.cwd(), ["--help"]);
     assert.match(help, /\bclone\b/);
     assert.match(help, /\bpublish\b/);
+    assert.match(help, /\bmodels\b/);
   });
 });
