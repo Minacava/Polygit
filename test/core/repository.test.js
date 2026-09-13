@@ -8,6 +8,7 @@ import {
   countApprovedTranslations,
   countUnapprovedTranslations,
   getStatusCounts,
+  listSegmentsForTranslate,
   markGlossarySegmentsStale,
   rebuildGlossaryUsage,
   replaceDocumentSegments,
@@ -99,6 +100,35 @@ describe("repository", () => {
     assert.equal(countApprovedTranslations(db, "fr"), 1);
     assert.equal(countUnapprovedTranslations(db, "es"), 0);
     assert.equal(countApprovedTranslations(db, "es"), 0);
+    db.close();
+  });
+
+  it("lists segments missing a translation for the target lang (multi-lang)", () => {
+    const root = tempProject();
+    const db = openDatabase(root);
+    const doc = upsertDocument(db, "sources/hello.md", "markdown");
+    replaceDocumentSegments(db, doc, [
+      { orderIndex: 0, sourceText: "Hello." },
+      { orderIndex: 1, sourceText: "World." },
+    ]);
+    const segments = db
+      .prepare(`SELECT id FROM segments WHERE document_id = ? ORDER BY order_index`)
+      .all(doc.id);
+
+    assert.equal(listSegmentsForTranslate(db, { lang: "fr" }).length, 2);
+    assert.equal(listSegmentsForTranslate(db, { lang: "es" }).length, 2);
+
+    upsertTranslation(db, segments[0].id, "fr", "Bonjour.", "llm", true);
+    upsertTranslation(db, segments[1].id, "fr", "Monde.", "llm", true);
+
+    // After FR is done, ES still needs work; FR has nothing left.
+    assert.equal(listSegmentsForTranslate(db, { lang: "fr" }).length, 0);
+    assert.equal(listSegmentsForTranslate(db, { lang: "es" }).length, 2);
+
+    // Stale segments need re-translation even when a row exists.
+    db.prepare(`UPDATE segments SET status = 'stale' WHERE id = ?`).run(segments[0].id);
+    assert.equal(listSegmentsForTranslate(db, { lang: "fr" }).length, 1);
+    assert.equal(listSegmentsForTranslate(db, { lang: "es" }).length, 2);
     db.close();
   });
 });

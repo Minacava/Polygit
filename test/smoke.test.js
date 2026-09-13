@@ -23,6 +23,15 @@ describe("cli smoke", () => {
     const initOut = run(cwd, ["init"]);
     assert.match(initOut, /Initialized Polygit project/i);
 
+    assert.ok(fs.existsSync(path.join(cwd, ".gitignore")));
+    assert.ok(fs.existsSync(path.join(cwd, ".env.example")));
+    const gitignore = fs.readFileSync(path.join(cwd, ".gitignore"), "utf8");
+    assert.match(gitignore, /\.tm\//);
+    assert.match(gitignore, /\.env/);
+    const envExample = fs.readFileSync(path.join(cwd, ".env.example"), "utf8");
+    assert.match(envExample, /ANTHROPIC_API_KEY/);
+    assert.match(envExample, /GITHUB_TOKEN/);
+
     fs.writeFileSync(
       path.join(cwd, "sources", "readme.md"),
       "# Hello\n\nWelcome to Polygit.\n\nAnother line here.\n",
@@ -44,6 +53,19 @@ describe("cli smoke", () => {
 
     assert.ok(fs.existsSync(path.join(cwd, ".tm", "db.sqlite")));
     assert.ok(fs.existsSync(path.join(cwd, ".tmconfig.json")));
+  });
+
+  it("models use saves model and defaultProvider", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-models-"));
+    run(cwd, ["init"]);
+    const out = run(cwd, ["models", "use", "ollama", "llama3.2"]);
+    assert.match(out, /Default provider set to ollama/i);
+
+    const config = JSON.parse(
+      fs.readFileSync(path.join(cwd, ".tmconfig.json"), "utf8"),
+    );
+    assert.equal(config.defaultProvider, "ollama");
+    assert.equal(config.models.ollama, "llama3.2");
   });
 
   it("exposes clone, publish, and models in --help", () => {

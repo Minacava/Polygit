@@ -142,6 +142,7 @@ export async function runModelsUse(providerRaw: string, model: string): Promise<
 
   writeConfig(root, {
     ...config,
+    defaultProvider: provider,
     models: {
       ...config.models,
       [provider]: modelId,
@@ -149,7 +150,8 @@ export async function runModelsUse(providerRaw: string, model: string): Promise<
   });
 
   console.log(`Saved ${provider} model → ${modelId} (.tmconfig.json)`);
-  console.log(`  polygit translate <lang> --provider=${provider}`);
+  console.log(`Default provider set to ${provider}.`);
+  console.log(`  polygit translate <lang>`);
 }
 
 /**
