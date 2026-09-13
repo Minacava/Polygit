@@ -25,7 +25,7 @@ Polygit is aimed at freelancers, small teams, and open-source projects that tran
 
 - **Node.js 20+**
 - A Git repository (Polygit can initialize one on `init`, or clone with `polygit clone`)
-- Optional: an API key for [Anthropic (Claude)](https://www.anthropic.com/) or [OpenAI](https://openai.com/) when translating without a TM hit
+- Optional: an LLM backend when translation memory has no match (see [LLM providers](#llm-providers))
 - Optional (for `publish`): `GITHUB_TOKEN` / `GH_TOKEN` or `GITLAB_TOKEN` / `GL_TOKEN`, plus normal Git credentials to push
 
 ---
@@ -200,7 +200,7 @@ npx polygit translate es --provider=openai --dry-run
 | Option | Description |
 | --- | --- |
 | `--doc=<path>` | Limit work to one source file |
-| `--provider=claude\|openai` | LLM used when TM misses |
+| `--provider=claude\|openai\|ollama\|huggingface` | LLM used when TM misses |
 | `--dry-run` | Show what would be translated without writing |
 
 Lookup order: **TM exact → TM fuzzy → LLM**.
@@ -343,6 +343,8 @@ Copy from `.env.example`:
 ```bash
 ANTHROPIC_API_KEY=your_key_here
 OPENAI_API_KEY=your_key_here
+HF_TOKEN=your_hf_token_here
+# OLLAMA_HOST=http://127.0.0.1:11434
 
 # For polygit publish (GitHub PR or GitLab MR)
 GITHUB_TOKEN=
@@ -350,6 +352,45 @@ GITLAB_TOKEN=
 ```
 
 Only set the provider(s) and forge token(s) you use. **Do not commit `.env`.**
+
+### LLM providers
+
+Polygit uses a small pluggable provider interface. Lookup order is always **TM exact → TM fuzzy → LLM**.
+
+| Provider | Flag / config | Auth | Default model | Notes |
+| --- | --- | --- | --- | --- |
+| Claude | `--provider=claude` | `ANTHROPIC_API_KEY` | `claude-3-5-haiku-latest` | Anthropic Messages API |
+| OpenAI | `--provider=openai` | `OPENAI_API_KEY` | `gpt-4o-mini` | Chat Completions API |
+| Ollama | `--provider=ollama` | None (local) | `llama3.2` | Requires [Ollama](https://ollama.com/) installed and running (`ollama serve`) |
+| Hugging Face | `--provider=huggingface` | `HF_TOKEN` | `meta-llama/Meta-Llama-3-8B-Instruct` | HF Inference Providers (OpenAI-compatible router) |
+
+Set the default in `.tmconfig.json`:
+
+```json
+{
+  "defaultProvider": "ollama"
+}
+```
+
+Override the model with environment variables:
+
+| Variable | Provider |
+| --- | --- |
+| `POLYGIT_CLAUDE_MODEL` | Claude |
+| `POLYGIT_OPENAI_MODEL` | OpenAI |
+| `POLYGIT_OLLAMA_MODEL` | Ollama (must be pulled locally, e.g. `ollama pull llama3.2`) |
+| `POLYGIT_HF_MODEL` | Hugging Face |
+| `OLLAMA_HOST` | Ollama base URL (default `http://127.0.0.1:11434`) |
+
+**Local-first with Ollama:**
+
+```bash
+ollama pull llama3.2
+ollama serve   # if not already running
+npx polygit translate fr --provider=ollama
+```
+
+Adding a new cloud or local backend: implement `TranslationProvider` in `src/connectors/` (or reuse `createChatCompletionsProvider` for OpenAI-compatible APIs) and register it in `createProvider`.
 
 ---
 
