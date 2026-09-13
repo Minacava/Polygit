@@ -1,5 +1,10 @@
 import type { ProviderName } from "../connectors/index.js";
-import { createProvider } from "../connectors/index.js";
+import {
+  createProvider,
+  listOllamaModels,
+  resolveModelSync,
+} from "../connectors/index.js";
+import { pickOllamaModelInteractively } from "./models.js";
 import { matchTranslationMemory } from "../core/matcher.js";
 import { writeOutputDocuments } from "../core/output.js";
 import {
@@ -21,6 +26,8 @@ import {
 export interface TranslateOptions {
   doc?: string;
   provider?: ProviderName;
+  /** One-off model override (also see `polygit models use`). */
+  model?: string;
   dryRun?: boolean;
   segmentIds?: string[];
 }
@@ -29,6 +36,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
   const root = requireProjectRoot();
   const config = readConfig(root);
   const providerName: ProviderName = options.provider ?? config.defaultProvider;
+  const modelChoice = await resolveTranslateModel(providerName, config, options.model);
 
   let documentPath: string | undefined;
   if (options.doc) {
@@ -64,7 +72,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
 
     let provider: ReturnType<typeof createProvider> | null = null;
     const ensureProvider = () => {
-      provider ??= createProvider(providerName);
+      provider ??= createProvider(providerName, { model: modelChoice.model });
       return provider;
     };
 
@@ -131,10 +139,40 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
 
     const prefix = options.dryRun ? "[dry-run] " : "";
     console.log(
-      `${prefix}Translated ${segments.length} segment(s) → ${lang} (tm-exact=${tmExact}, tm-fuzzy=${tmFuzzy}, llm=${llm}, provider=${providerName})`,
+      `${prefix}Translated ${segments.length} segment(s) → ${lang} (tm-exact=${tmExact}, tm-fuzzy=${tmFuzzy}, llm=${llm}, provider=${providerName}, model=${modelChoice.model})`,
     );
     if (written.length) console.log(`  wrote: ${written.join(", ")}`);
   } finally {
     db.close();
   }
 }
+
+async function resolveTranslateModel(
+  providerName: ProviderName,
+  config: ReturnType<typeof readConfig>,
+  cliModel?: string,
+): Promise<{ model: string; source: string }> {
+  const sync = resolveModelSync(providerName, config, cliModel);
+  if (sync.source !== "default") {
+    return sync;
+  }
+  if (providerName !== "ollama") {
+    return sync;
+  }
+
+  try {
+    const installed = await listOllamaModels();
+    if (installed.length === 1 && installed[0]) {
+      return { model: installed[0].name, source: "auto" };
+    }
+    if (installed.length > 1) {
+      const picked = await pickOllamaModelInteractively(installed.map((m) => m.name));
+      return { model: picked, source: "cli" };
+    }
+  } catch {
+    // Ollama unreachable — keep hardcoded default.
+  }
+
+  return sync;
+}
+

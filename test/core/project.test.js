@@ -53,4 +53,34 @@ describe("project", () => {
     );
     assert.equal(readConfig(root).defaultProvider, "claude");
   });
+
+  it("round-trips the models map", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-project-"));
+    writeConfig(root, {
+      ...DEFAULT_CONFIG,
+      defaultProvider: "ollama",
+      models: { ollama: "qwen2.5:7b", huggingface: "org/model" },
+    });
+    const config = readConfig(root);
+    assert.equal(config.models.ollama, "qwen2.5:7b");
+    assert.equal(config.models.huggingface, "org/model");
+    assert.equal(config.models.claude, undefined);
+  });
+
+  it("ignores invalid models keys when reading config", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-project-"));
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({
+        defaultProvider: "ollama",
+        models: { ollama: "mistral", nope: "x", openai: "  " },
+      }),
+      "utf8",
+    );
+    const config = readConfig(root);
+    assert.equal(config.models.ollama, "mistral");
+    assert.equal(config.models.openai, undefined);
+    assert.equal("nope" in config.models, false);
+  });
+
 });
