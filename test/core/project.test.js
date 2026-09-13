@@ -37,4 +37,20 @@ describe("project", () => {
     assert.deepEqual(config.targetLangs, ["fr"]);
     assert.equal(config.defaultProvider, "openai");
   });
+
+  it("reads ollama and huggingface defaultProvider values", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-project-"));
+    writeConfig(root, { ...DEFAULT_CONFIG, defaultProvider: "ollama" });
+    assert.equal(readConfig(root).defaultProvider, "ollama");
+
+    writeConfig(root, { ...DEFAULT_CONFIG, defaultProvider: "huggingface" });
+    assert.equal(readConfig(root).defaultProvider, "huggingface");
+
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({ defaultProvider: "not-a-provider" }),
+      "utf8",
+    );
+    assert.equal(readConfig(root).defaultProvider, "claude");
+  });
 });
