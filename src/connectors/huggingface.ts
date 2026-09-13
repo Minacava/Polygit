@@ -1,18 +1,30 @@
 import { createChatCompletionsProvider } from "./chat-completions.js";
 import type { TranslationProvider } from "./provider.js";
+import { DEFAULT_MODELS } from "./resolve-model.js";
+
+export interface HuggingFaceProviderOptions {
+  token?: string;
+  model?: string;
+}
 
 /**
  * Hugging Face Inference Providers (OpenAI-compatible router).
  * @see https://huggingface.co/docs/inference-providers/guides/open-ai-compatible-api
  */
 export function createHuggingFaceProvider(
-  token = process.env.HF_TOKEN ?? process.env.HUGGINGFACE_TOKEN,
+  options: HuggingFaceProviderOptions = {},
 ): TranslationProvider {
+  const token =
+    options.token ?? process.env.HF_TOKEN ?? process.env.HUGGINGFACE_TOKEN;
+  const model =
+    options.model?.trim() ||
+    process.env.POLYGIT_HF_MODEL?.trim() ||
+    DEFAULT_MODELS.huggingface;
+
   return createChatCompletionsProvider({
     name: "huggingface",
     endpoint: "https://router.huggingface.co/v1/chat/completions",
-    model:
-      process.env.POLYGIT_HF_MODEL ?? "meta-llama/Meta-Llama-3-8B-Instruct",
+    model,
     ...(token ? { apiKey: token } : {}),
     label: "Hugging Face",
     missingKeyMessage:

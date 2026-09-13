@@ -4,20 +4,31 @@ import {
   type TranslateContext,
   type TranslationProvider,
 } from "./provider.js";
+import { DEFAULT_MODELS } from "./resolve-model.js";
 
 interface ClaudeResponse {
   content?: Array<{ type: string; text?: string }>;
   error?: { message?: string };
 }
 
+export interface ClaudeProviderOptions {
+  apiKey?: string;
+  model?: string;
+}
+
 export function createClaudeProvider(
-  apiKey = process.env.ANTHROPIC_API_KEY,
+  options: ClaudeProviderOptions = {},
 ): TranslationProvider {
+  const apiKey = options.apiKey ?? process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("Missing ANTHROPIC_API_KEY. Set it in your environment or .env file.");
   }
 
   const key = apiKey;
+  const model =
+    options.model?.trim() ||
+    process.env.POLYGIT_CLAUDE_MODEL?.trim() ||
+    DEFAULT_MODELS.claude;
 
   return {
     name: "claude",
@@ -42,7 +53,7 @@ export function createClaudeProvider(
             "anthropic-version": "2023-06-01",
           },
           body: JSON.stringify({
-            model: process.env.POLYGIT_CLAUDE_MODEL ?? "claude-3-5-haiku-latest",
+            model,
             max_tokens: 2048,
             system,
             messages: [{ role: "user", content: user }],

@@ -10,6 +10,7 @@ import { runInit } from "./commands/init.js";
 import { runPublish } from "./commands/publish.js";
 import { runReview } from "./commands/review.js";
 import { runStatus } from "./commands/status.js";
+import { runModelsList, runModelsUse } from "./commands/models.js";
 import { runTranslate } from "./commands/translate.js";
 import type { DocumentFormat, SegmentStatus } from "./core/db.js";
 import { findProjectRoot } from "./core/project.js";
@@ -67,8 +68,9 @@ program
   .argument("<lang>", "Target language code (e.g. fr, es)")
   .option("--doc <path>", "Limit to one source document")
   .option("--provider <name>", "claude | openai | ollama | huggingface")
+  .option("--model <id>", "Model id/tag for the selected provider")
   .option("--dry-run", "Show plan without writing or calling the LLM", false)
-  .action(async (lang: string, opts: { doc?: string; provider?: string; dryRun?: boolean }) => {
+  .action(async (lang: string, opts: { doc?: string; provider?: string; model?: string; dryRun?: boolean }) => {
     let provider: ProviderName | undefined;
     if (opts.provider !== undefined) {
       if (!isProviderName(opts.provider)) {
@@ -81,6 +83,7 @@ program
     await runTranslate(lang, {
       ...(opts.doc ? { doc: opts.doc } : {}),
       ...(provider !== undefined ? { provider } : {}),
+      ...(opts.model ? { model: opts.model } : {}),
       dryRun: Boolean(opts.dryRun),
     });
   });
@@ -183,6 +186,35 @@ program
       });
     },
   );
+
+
+const models = program.command("models").description("List and select LLM models");
+
+models
+  .command("list")
+  .description("Show effective models and local Ollama installs")
+  .option("--provider <name>", "Limit to one provider")
+  .action(async (opts: { provider?: string }) => {
+    let provider: ProviderName | undefined;
+    if (opts.provider !== undefined) {
+      if (!isProviderName(opts.provider)) {
+        throw new Error(
+          `Unsupported provider: ${opts.provider}. Use claude, openai, ollama, or huggingface.`,
+        );
+      }
+      provider = opts.provider;
+    }
+    await runModelsList(provider ? { provider } : {});
+  });
+
+models
+  .command("use")
+  .description("Save the default model for a provider in .tmconfig.json")
+  .argument("<provider>", "claude | openai | ollama | huggingface")
+  .argument("<model>", "Model id or Ollama tag")
+  .action(async (provider: string, model: string) => {
+    await runModelsUse(provider, model);
+  });
 
 program
   .command("status")
