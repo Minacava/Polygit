@@ -106,19 +106,29 @@ export function replaceDocumentSegments(
   return { inserted, unchanged, removed };
 }
 
+/**
+ * Segments that still need work for a target language:
+ * - no translation row for `lang`, or
+ * - segment is marked stale (e.g. after glossary sync).
+ *
+ * This is per-language so `translate fr` then `translate es` both work.
+ */
 export function listSegmentsForTranslate(
   db: Database.Database,
-  opts: { documentPath?: string; statuses?: SegmentStatus[]; segmentIds?: string[] },
+  opts: {
+    lang: string;
+    documentPath?: string;
+    segmentIds?: string[];
+  },
 ): Array<SegmentRow & { document_path: string; document_format: DocumentFormat }> {
-  const statuses = opts.statuses ?? ["pending", "stale"];
-  const placeholders = statuses.map(() => "?").join(", ");
-  const params: unknown[] = [...statuses];
+  const params: unknown[] = [opts.lang];
 
   let sql = `
     SELECT s.*, d.path AS document_path, d.format AS document_format
     FROM segments s
     JOIN documents d ON d.id = s.document_id
-    WHERE s.status IN (${placeholders})
+    LEFT JOIN translations t ON t.segment_id = s.id AND t.lang = ?
+    WHERE (t.id IS NULL OR s.status = 'stale')
   `;
 
   if (opts.documentPath) {

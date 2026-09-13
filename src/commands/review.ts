@@ -1,6 +1,7 @@
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import type { SegmentStatus } from "../core/db.js";
+import { writeOutputDocuments } from "../core/output.js";
 import { openProjectDb, requireProjectRoot } from "../core/project.js";
 import { listReviewSegments, upsertTranslation } from "../core/repository.js";
 
@@ -13,6 +14,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
   const root = requireProjectRoot();
   const db = openProjectDb(root);
   const rl = readline.createInterface({ input, output });
+  const touchedDocs = new Set<string>();
 
   try {
     const rows = listReviewSegments(db, {
@@ -53,6 +55,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
           continue;
         }
         upsertTranslation(db, row.id, options.lang, row.target_text, "manual", true);
+        touchedDocs.add(row.document_path);
         console.log("Approved.\n");
         continue;
       }
@@ -64,8 +67,14 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
           continue;
         }
         upsertTranslation(db, row.id, options.lang, edited.trim(), "manual", true);
+        touchedDocs.add(row.document_path);
         console.log("Saved and approved.\n");
       }
+    }
+
+    if (options.lang && touchedDocs.size > 0) {
+      const written = writeOutputDocuments(db, root, options.lang, [...touchedDocs]);
+      console.log(`Updated outputs: ${written.join(", ")}`);
     }
   } finally {
     rl.close();
