@@ -11,6 +11,11 @@ export interface ReviewOptions {
 }
 
 export async function runReview(options: ReviewOptions = {}): Promise<void> {
+  if (!options.lang) {
+    throw new Error(
+      `Language is required. Pass --lang=<code> (e.g. polygit review --lang=fr).`,
+    );
+  }
   const root = requireProjectRoot();
   const db = openProjectDb(root);
   const rl = readline.createInterface({ input, output });
@@ -44,12 +49,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
       if (answer === "q") break;
       if (answer === "s" || answer === "") continue;
 
-      if (!options.lang) {
-        console.log("Pass --lang=<code> to approve or edit translations.");
-        continue;
-      }
-
-      if (answer === "a") {
+            if (answer === "a") {
         if (!row.target_text) {
           console.log("No translation to approve.");
           continue;

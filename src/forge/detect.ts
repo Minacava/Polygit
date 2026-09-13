@@ -4,22 +4,22 @@
  */
 import type { ForgeKind, ForgeRepoRef } from "./types.js";
 
-export function detectForgeFromRemoteUrl(remoteUrl: string): ForgeRepoRef {
+export function detectForgeFromRemoteUrl(
+  remoteUrl: string,
+  forgeOverride?: ForgeKind,
+): ForgeRepoRef {
   const normalized = remoteUrl.trim().replace(/\.git$/i, "");
 
-  // git@host:path/to/repo
   const ssh = normalized.match(/^git@([^:]+):(.+)$/);
   if (ssh) {
-    return fromHostAndPath(ssh[1]!, ssh[2]!);
+    return fromHostAndPath(ssh[1]!, ssh[2]!, forgeOverride);
   }
 
-  // ssh://git@host/path/to/repo
   const sshUrl = normalized.match(/^ssh:\/\/git@([^/]+)\/(.+)$/);
   if (sshUrl) {
-    return fromHostAndPath(sshUrl[1]!, sshUrl[2]!);
+    return fromHostAndPath(sshUrl[1]!, sshUrl[2]!, forgeOverride);
   }
 
-  // https://host/path/to/repo
   let url: URL;
   try {
     url = new URL(normalized);
@@ -27,17 +27,21 @@ export function detectForgeFromRemoteUrl(remoteUrl: string): ForgeRepoRef {
     throw new Error(`Unrecognized git remote URL: ${remoteUrl}`);
   }
   const path = url.pathname.replace(/^\/+/, "");
-  return fromHostAndPath(url.host, path);
+  return fromHostAndPath(url.host, path, forgeOverride);
 }
 
-function fromHostAndPath(host: string, repoPath: string): ForgeRepoRef {
+function fromHostAndPath(
+  host: string,
+  repoPath: string,
+  forgeOverride?: ForgeKind,
+): ForgeRepoRef {
   const cleanPath = repoPath.replace(/^\/+|\/+$/g, "");
   const parts = cleanPath.split("/").filter(Boolean);
   if (parts.length < 2) {
     throw new Error(`Remote path must include owner/name: ${repoPath}`);
   }
 
-  const kind = detectKind(host);
+  const kind = forgeOverride ?? detectKind(host);
   const name = parts[parts.length - 1]!;
   const owner = parts[0]!;
   const fullPath = parts.join("/");
@@ -70,6 +74,16 @@ function detectKind(host: string): ForgeKind {
   if (h === "github.com" || h.endsWith(".github.com")) {
     return "github";
   }
-  // gitlab.com and self-hosted GitLab instances
-  return "gitlab";
+  // GitHub Enterprise Server commonly uses github. as a subdomain label.
+  if (h.startsWith("github.") || h.includes(".github.")) {
+    return "github";
+  }
+  if (h === "gitlab.com" || h.endsWith(".gitlab.com") || h.startsWith("gitlab.") || h.includes(".gitlab.")) {
+    return "gitlab";
+  }
+  // Unknown hosts: prefer GitLab API shape only when the hostname looks like GitLab;
+  // otherwise require an explicit --forge override from publish.
+  throw new Error(
+    `Cannot detect forge for host "${host}". Pass --forge=github or --forge=gitlab.`,
+  );
 }

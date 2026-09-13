@@ -30,6 +30,10 @@ export interface TranslateOptions {
   model?: string;
   dryRun?: boolean;
   segmentIds?: string[];
+  /** Apply fuzzy TM hits as draft translations (still unapproved). Default: skip to LLM. */
+  acceptFuzzy?: boolean;
+  /** Test seam: inject a provider instead of creating one. */
+  providerInstance?: import("../connectors/index.js").TranslationProvider;
 }
 
 export async function runTranslate(lang: string, options: TranslateOptions = {}): Promise<void> {
@@ -72,6 +76,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
 
     let provider: ReturnType<typeof createProvider> | null = null;
     const ensureProvider = () => {
+      if (options.providerInstance) return options.providerInstance;
       provider ??= createProvider(providerName, { model: modelChoice.model });
       return provider;
     };
@@ -95,12 +100,15 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
       }
 
       if (match?.kind === "fuzzy") {
-        if (!options.dryRun) {
-          upsertTranslation(db, segment.id, lang, match.entry.target_text, "tm-fuzzy");
-          upsertTranslationMemory(db, segment.source_text, match.entry.target_text, lang);
+        if (options.acceptFuzzy) {
+          if (!options.dryRun) {
+            // Draft only — requires review; do NOT poison TM with fuzzy-as-exact.
+            upsertTranslation(db, segment.id, lang, match.entry.target_text, "tm-fuzzy", false);
+          }
+          tmFuzzy += 1;
+          continue;
         }
-        tmFuzzy += 1;
-        continue;
+        // Without --accept-fuzzy, fall through to LLM rather than auto-shipping fuzzy text.
       }
 
       if (options.dryRun) {

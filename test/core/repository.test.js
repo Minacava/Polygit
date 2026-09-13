@@ -125,10 +125,16 @@ describe("repository", () => {
     assert.equal(listSegmentsForTranslate(db, { lang: "fr" }).length, 0);
     assert.equal(listSegmentsForTranslate(db, { lang: "es" }).length, 2);
 
-    // Stale segments need re-translation even when a row exists.
-    db.prepare(`UPDATE segments SET status = 'stale' WHERE id = ?`).run(segments[0].id);
+    // Stale is per-language: FR glossary sync must not force ES retranslation.
+    const { row } = upsertGlossaryTerm(db, "Hello", "Bonjour", "fr");
+    rebuildGlossaryUsage(db, row.id);
+    markGlossarySegmentsStale(db, [row.id], "fr");
     assert.equal(listSegmentsForTranslate(db, { lang: "fr" }).length, 1);
     assert.equal(listSegmentsForTranslate(db, { lang: "es" }).length, 2);
+
+    // Stale FR clears approval on the affected segment → publish gate blocks
+    assert.equal(countUnapprovedTranslations(db, "fr"), 1);
+    assert.equal(countApprovedTranslations(db, "fr"), 1);
     db.close();
   });
 });

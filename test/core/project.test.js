@@ -51,7 +51,7 @@ describe("project", () => {
       JSON.stringify({ defaultProvider: "not-a-provider" }),
       "utf8",
     );
-    assert.equal(readConfig(root).defaultProvider, "claude");
+    assert.equal(readConfig(root).defaultProvider, "ollama");
   });
 
   it("round-trips the models map", () => {

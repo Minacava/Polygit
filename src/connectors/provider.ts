@@ -30,7 +30,7 @@ export function isProviderName(value: string): value is ProviderName {
 
 export function parseProviderName(
   value: unknown,
-  fallback: ProviderName = "claude",
+  fallback: ProviderName = "ollama",
 ): ProviderName {
   return typeof value === "string" && isProviderName(value) ? value : fallback;
 }
