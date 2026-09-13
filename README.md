@@ -418,6 +418,7 @@ npx polygit translate fr --provider=ollama
 
 Adding a new cloud or local backend: implement `TranslationProvider` in `src/connectors/` (or reuse `createChatCompletionsProvider` for OpenAI-compatible APIs) and register it in `createProvider`.
 
+---
 
 ## Supported formats
 
