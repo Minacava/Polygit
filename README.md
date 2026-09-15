@@ -12,11 +12,17 @@ Translate on your machine → approve in the terminal → open a **GitHub PR** o
 
 ```bash
 npm install -g polygit
-# or one-off:
+# or one-off without a global install:
 npx polygit <command>
 ```
 
 Requires **Node.js 20+**.
+
+After install, the `polygit` command is available on your PATH. Confirm with:
+
+```bash
+polygit --help
+```
 
 ---
 
@@ -242,7 +248,11 @@ cd Polygit
 npm install
 npm run build
 npm test
+# optional: use this checkout as the global `polygit` binary
+npm link
 ```
+
+To publish a new version to npm (maintainers): bump `version` in `package.json`, push a git tag `vX.Y.Z`, and GitHub Actions publishes with the `NPM_TOKEN` secret — or run `npm publish` locally when logged in.
 
 ---
 
