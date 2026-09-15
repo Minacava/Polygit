@@ -46,7 +46,7 @@
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-"prepublishOnly": "npm run typecheck && npm test && npm run security:audit",
+    "prepublishOnly": "npm run typecheck && npm test && npm run security:audit",
     "security:audit": "npm audit --omit=dev",
     "test": "npm run build && node --test 'test/**/*.test.js'",
     "pack:check": "npm pack --dry-run"
