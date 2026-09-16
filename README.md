@@ -1,5 +1,7 @@
 # Polygit
 
+[![npm version](https://img.shields.io/npm/v/polygit.svg)](https://www.npmjs.com/package/polygit)
+
 **Local-first CLI for assisted translation.**
 
 Keep sources and translations in Git. Reuse a translation memory. Enforce a glossary. Call an LLM only when the TM misses — **Claude**, **OpenAI**, **Ollama (local)**, or **Hugging Face**.
@@ -9,6 +11,8 @@ Translate on your machine → approve in the terminal → open a **GitHub PR** o
 ---
 
 ## Install
+
+Published on npm: [polygit](https://www.npmjs.com/package/polygit)
 
 ```bash
 npm install -g polygit
