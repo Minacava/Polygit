@@ -1,0 +1,12 @@
+---
+description: Solo Marina Camacho (Minacava) puede crear commits, tags o releases
+alwaysApply: true
+---
+
+# Commits y releases
+
+- Solo Marina Camacho (Minacava) puede crear commits, tags o releases.
+- Los agentes de Cursor NUNCA deben ejecutar `git commit`, `git tag`, `gh release`, ni firmar commits.
+- No uses identity de Cursor Agent / cursor[bot] como author o committer.
+- Deja los cambios staged o en working tree; Marina hace el commit.
+- Si el flujo pide commit/push/PR, prepara el diff y detente para que Marina confirme y haga el commit ella.
