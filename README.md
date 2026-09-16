@@ -240,22 +240,6 @@ Non-`github.com` remotes that look like GitLab (`gitlab.*`) are treated as **Git
 
 ---
 
-## Develop from this repo
-
-```bash
-git clone https://github.com/Minacava/Polygit.git
-cd Polygit
-npm install
-npm run build
-npm test
-# optional: use this checkout as the global `polygit` binary
-npm link
-```
-
-To publish a new version to npm (maintainers): bump `version` in `package.json`, push a git tag `vX.Y.Z`, and GitHub Actions publishes with the `NPM_TOKEN` secret — or run `npm publish` locally when logged in.
-
----
-
 ## License
 
 [MIT](LICENSE) © Marina Camacho
