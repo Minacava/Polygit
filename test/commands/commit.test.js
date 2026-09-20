@@ -33,4 +33,30 @@ describe("commit", () => {
       process.chdir(prev);
     }
   });
+
+  it("commits custom contentRoots for non-default layouts", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-commit-docs-"));
+    const prev = process.cwd();
+    process.chdir(root);
+    try {
+      await runInit(root, { preset: "vitepress" });
+      const git = simpleGit(root);
+      await git.addConfig("user.name", "Test");
+      await git.addConfig("user.email", "test@example.com");
+
+      fs.writeFileSync(path.join(root, "docs", "a.md"), "Hello.\n", "utf8");
+      fs.mkdirSync(path.join(root, "docs", "fr"), { recursive: true });
+      fs.writeFileSync(path.join(root, "docs", "fr", "a.md"), "Bonjour.\n", "utf8");
+      fs.writeFileSync(path.join(root, "secret.txt"), "nope\n", "utf8");
+
+      await runCommit({ yes: true, message: "test: docs fr" });
+
+      const show = await git.show(["--name-only", "--pretty=format:", "HEAD"]);
+      assert.match(show, /docs\/a\.md/);
+      assert.match(show, /docs\/fr\/a\.md/);
+      assert.doesNotMatch(show, /secret\.txt/);
+    } finally {
+      process.chdir(prev);
+    }
+  });
 });

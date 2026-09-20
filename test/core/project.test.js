@@ -36,6 +36,9 @@ describe("project", () => {
     assert.equal(config.sourceLang, "en");
     assert.deepEqual(config.targetLangs, ["fr"]);
     assert.equal(config.defaultProvider, "openai");
+    assert.deepEqual(config.contentRoots, ["sources"]);
+    assert.equal(config.outputMode, "mirror");
+    assert.equal(config.outputRoot, "outputs");
   });
 
   it("reads ollama and huggingface defaultProvider values", () => {

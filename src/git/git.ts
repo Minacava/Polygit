@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { simpleGit } from "simple-git";
+import {
+  gitPathPrefixes,
+  pathMatchesPrefixes,
+} from "../core/layout.js";
+import { readConfig } from "../core/project.js";
 
 export async function ensureGitRepo(projectRoot: string): Promise<boolean> {
   const gitDir = path.join(projectRoot, ".git");
@@ -24,8 +29,16 @@ export async function getStatusPaths(projectRoot: string): Promise<{
   };
 }
 
+function translationPrefixes(projectRoot: string): string[] {
+  return gitPathPrefixes(readConfig(projectRoot));
+}
+
+function isTranslationPath(relPath: string, prefixes: string[]): boolean {
+  return pathMatchesPrefixes(relPath, prefixes);
+}
+
 /**
- * Stage only sources/ and outputs/, never .tm/, .env, or secrets.
+ * Stage only configured contentRoots (+ outputRoot for mirror), never .tm/, .env, or secrets.
  */
 export async function commitSourcesAndOutputs(
   projectRoot: string,
@@ -33,16 +46,20 @@ export async function commitSourcesAndOutputs(
 ): Promise<{ committed: boolean; message: string }> {
   const git = simpleGit(projectRoot);
   const status = await git.status();
+  const prefixes = translationPrefixes(projectRoot);
 
   const candidates = [
     ...status.not_added,
     ...status.modified,
     ...status.created,
     ...status.deleted,
-  ].filter((p) => p.startsWith("sources/") || p.startsWith("outputs/"));
+  ].filter((p) => isTranslationPath(p, prefixes));
 
   if (candidates.length === 0) {
-    return { committed: false, message: "No changes in sources/ or outputs/ to commit." };
+    return {
+      committed: false,
+      message: `No changes under ${prefixes.join(", ")} to commit.`,
+    };
   }
 
   await git.add(candidates);
@@ -52,9 +69,11 @@ export async function commitSourcesAndOutputs(
 
 export async function getDiffSummary(projectRoot: string): Promise<string> {
   const git = simpleGit(projectRoot);
-  const diff = await git.diff(["--", "sources/", "outputs/"]);
-  const untracked = (await git.status()).not_added.filter(
-    (p) => p.startsWith("sources/") || p.startsWith("outputs/"),
+  const prefixes = translationPrefixes(projectRoot);
+  const diffArgs = ["--", ...prefixes.map((p) => `${p}/`)];
+  const diff = await git.diff(diffArgs);
+  const untracked = (await git.status()).not_added.filter((p) =>
+    isTranslationPath(p, prefixes),
   );
   const parts: string[] = [];
   if (diff.trim()) parts.push(diff.trim());
@@ -133,6 +152,7 @@ export async function hasUncommittedTranslationChanges(
 ): Promise<boolean> {
   const git = simpleGit(projectRoot);
   const status = await git.status();
+  const prefixes = translationPrefixes(projectRoot);
   const paths = [
     ...status.not_added,
     ...status.modified,
@@ -140,7 +160,7 @@ export async function hasUncommittedTranslationChanges(
     ...status.deleted,
     ...status.staged,
   ];
-  return paths.some((p) => p.startsWith("sources/") || p.startsWith("outputs/"));
+  return paths.some((p) => isTranslationPath(p, prefixes));
 }
 
 export async function cloneRepository(

@@ -42,6 +42,7 @@ describe("cli smoke", () => {
     assert.match(importOut, /Imported sources\/readme\.md/i);
 
     const statusOut = run(cwd, ["status"]);
+    assert.match(statusOut, /contentRoots/);
     assert.match(statusOut, /pending=/);
 
     const dryOut = run(cwd, ["translate", "fr", "--dry-run", "--provider=claude"]);
