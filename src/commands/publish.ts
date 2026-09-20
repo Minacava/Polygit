@@ -158,7 +158,7 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
       ``,
       `## Review`,
       ``,
-      `Please review the changes under \`outputs/\` before merging.`,
+      `Please review the translated output files before merging.`,
       ``,
       `_Opened automatically by \`polygit publish\`._`,
     ]
