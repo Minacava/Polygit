@@ -1,6 +1,7 @@
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { requireProjectRoot } from "../core/project.js";
+import { describeLayout, layoutFromConfig } from "../core/layout.js";
+import { readConfig, requireProjectRoot } from "../core/project.js";
 import { commitSourcesAndOutputs, getDiffSummary } from "../git/git.js";
 
 export interface CommitOptions {
@@ -10,14 +11,15 @@ export interface CommitOptions {
 
 export async function runCommit(options: CommitOptions = {}): Promise<void> {
   const root = requireProjectRoot();
+  const layout = layoutFromConfig(readConfig(root));
   const diff = await getDiffSummary(root);
-  console.log("Changes in sources/ and outputs/:\n");
+  console.log(`Changes under configured roots (${describeLayout(layout)}):\n`);
   console.log(diff);
   console.log("");
 
   const message =
     options.message ??
-    `translate: update sources/outputs (${new Date().toISOString().slice(0, 10)})`;
+    `translate: update content (${new Date().toISOString().slice(0, 10)})`;
 
   if (!options.yes) {
     if (!process.stdin.isTTY) {
