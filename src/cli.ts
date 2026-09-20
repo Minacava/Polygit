@@ -31,9 +31,13 @@ program
 
 program
   .command("init")
-  .description("Create sources/, outputs/, .tmconfig.json, and local SQLite DB")
-  .action(async () => {
-    await runInit();
+  .description("Create .tmconfig.json, content dirs, and local SQLite DB")
+  .option(
+    "--preset <name>",
+    "Layout preset: vitepress | docusaurus | json-i18n (default: sources→outputs mirror)",
+  )
+  .action(async (opts: { preset?: string }) => {
+    await runInit(process.cwd(), opts.preset ? { preset: opts.preset } : {});
   });
 
 program
@@ -51,15 +55,22 @@ program
 
 program
   .command("import")
-  .description("Parse a file under sources/ into pending segments")
-  .argument("<file>", "Path under sources/")
+  .description("Import a file, glob, or content root into pending segments")
+  .argument("[path]", "File or glob under contentRoots (e.g. docs/**/*.md)")
+  .option("--root <dir>", "Import all known files under this directory")
   .option("--format <format>", "markdown | json-i18n")
-  .action((file: string, opts: { format?: string }) => {
+  .action((file: string | undefined, opts: { format?: string; root?: string }) => {
     const format = opts.format as DocumentFormat | undefined;
     if (format && format !== "markdown" && format !== "json-i18n") {
       throw new Error(`Unsupported format: ${format}`);
     }
-    runImport(file, format ? { format } : {});
+    if (!file && !opts.root) {
+      throw new Error("Provide a file/glob path or --root=<dir>.");
+    }
+    runImport(file, {
+      ...(format ? { format } : {}),
+      ...(opts.root ? { root: opts.root } : {}),
+    });
   });
 
 program
@@ -142,7 +153,7 @@ program
 
 program
   .command("commit")
-  .description("Commit sources/ and outputs/ together")
+  .description("Commit configured content roots and translation outputs")
   .option("--yes", "Skip confirmation", false)
   .option("--message <message>", "Commit message")
   .action(async (opts: { yes?: boolean; message?: string }) => {

@@ -48,8 +48,8 @@ export async function runClone(url: string, options: CloneOptions = {}): Promise
     await runInit(targetDir);
     console.log(`\nNext steps:`);
     console.log(`  cd ${targetDir}`);
-    console.log(`  # add files under sources/, then:`);
-    console.log(`  polygit import sources/<file> --format=markdown`);
+    console.log(`  # point contentRoots at your docs (or use --preset on init), then:`);
+    console.log(`  polygit import --root=sources`);
     console.log(`  polygit translate <lang> --provider=claude`);
     console.log(`  polygit review --lang=<lang>`);
     console.log(`  polygit publish --lang=<lang>`);

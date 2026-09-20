@@ -1,11 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  defaultLayoutConfig,
+  describeLayout,
+  ensureLayoutDirs,
+  isLayoutPresetName,
+  layoutForPreset,
+  LAYOUT_PRESET_NAMES,
+  type LayoutConfig,
+  type LayoutPresetName,
+} from "../core/layout.js";
+import {
   CONFIG_FILENAME,
   DEFAULT_CONFIG,
   findProjectRoot,
   openProjectDb,
   writeConfig,
+  type TmConfig,
 } from "../core/project.js";
 import { ensureGitRepo } from "../git/git.js";
 
@@ -45,7 +56,24 @@ GITLAB_TOKEN=
 # GL_TOKEN=
 `;
 
-export async function runInit(cwd = process.cwd()): Promise<void> {
+export interface InitOptions {
+  preset?: string;
+}
+
+function resolveLayout(presetName?: string): LayoutConfig {
+  if (!presetName) return defaultLayoutConfig();
+  if (!isLayoutPresetName(presetName)) {
+    throw new Error(
+      `Unknown preset "${presetName}". Use one of: ${LAYOUT_PRESET_NAMES.join(", ")}.`,
+    );
+  }
+  return layoutForPreset(presetName as LayoutPresetName);
+}
+
+export async function runInit(
+  cwd = process.cwd(),
+  options: InitOptions = {},
+): Promise<void> {
   const existing = findProjectRoot(cwd);
   if (existing && path.resolve(existing) === path.resolve(cwd)) {
     console.log(`Polygit project already initialized at ${existing}`);
@@ -53,12 +81,18 @@ export async function runInit(cwd = process.cwd()): Promise<void> {
   }
 
   const root = path.resolve(cwd);
-  fs.mkdirSync(path.join(root, "sources"), { recursive: true });
-  fs.mkdirSync(path.join(root, "outputs"), { recursive: true });
+  const layout = resolveLayout(options.preset);
+  ensureLayoutDirs(root, layout);
   fs.mkdirSync(path.join(root, ".tm"), { recursive: true });
 
   if (!fs.existsSync(path.join(root, CONFIG_FILENAME))) {
-    writeConfig(root, { ...DEFAULT_CONFIG });
+    const config: TmConfig = {
+      ...DEFAULT_CONFIG,
+      contentRoots: [...layout.contentRoots],
+      outputMode: layout.outputMode,
+      outputRoot: layout.outputRoot,
+    };
+    writeConfig(root, config);
   }
 
   ensureGitignore(root);
@@ -73,9 +107,9 @@ export async function runInit(cwd = process.cwd()): Promise<void> {
 
   const createdGit = await ensureGitRepo(root);
   console.log(`Initialized Polygit project in ${root}`);
-  console.log(
-    `  created: sources/, outputs/, ${CONFIG_FILENAME}, .tm/db.sqlite, .gitignore, .env.example`,
-  );
+  console.log(`  layout: ${describeLayout(layout)}`);
+  if (options.preset) console.log(`  preset: ${options.preset}`);
+  console.log(`  created: ${CONFIG_FILENAME}, .tm/db.sqlite, .gitignore, .env.example`);
   if (createdGit) console.log("  created: git repository");
 }
 

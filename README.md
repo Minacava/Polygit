@@ -137,21 +137,24 @@ Segments already translated for `fr` are translated again for `es` when `es` has
 
 | Command | What it does |
 | --- | --- |
-| `init` | Create `sources/`, `outputs/`, `.tmconfig.json`, `.tm/`, `.gitignore`, `.env.example` |
+| `init [--preset=…]` | Create `.tmconfig.json`, content dirs, `.tm/`, `.gitignore`, `.env.example` |
 | `clone <url>` | Clone a repo and run `init` (unless `--no-init`) |
-| `import <file>` | Split a file under `sources/` into segments |
-| `translate <lang>` | TM exact → (optional fuzzy draft) → LLM; write `outputs/<lang>/` |
+| `import <path\|glob>` | Import a file, glob, or `--root` under `contentRoots` |
+| `translate <lang>` | TM exact → (optional fuzzy draft) → LLM; write outputs per layout |
 | `models list` | Show effective models (+ local Ollama tags) |
 | `models use <provider> <model>` | Save model **and** set default provider |
 | `glossary add` / `glossary sync` | Preferred terms; sync marks **that lang** stale (optional retranslate) |
-| `review --lang=<lang>` | Approve / edit in the terminal (updates `outputs/`; `--lang` required) |
-| `commit` | Commit only `sources/` + `outputs/` |
+| `review --lang=<lang>` | Approve / edit in the terminal (updates outputs; `--lang` required) |
+| `commit` | Commit configured content roots (+ mirror `outputRoot`) |
 | `publish --lang=<lang>` | After approval: commit → push branch → GitHub PR or GitLab MR |
-| `status [--lang=<lang>]` | Counts per document (optional per-language breakdown) |
+| `status [--lang=<lang>]` | Layout roots, on-disk counts, and per-document status |
 
 ### Useful flags
 
 ```bash
+polygit init --preset=vitepress
+polygit import docs/**/*.md
+polygit import --root=docs --format=markdown
 polygit translate fr --provider=ollama --model=mistral --dry-run
 polygit translate fr --accept-fuzzy
 polygit translate fr --doc=sources/intro.md
@@ -197,12 +200,41 @@ polygit models use ollama qwen2.5:7b
 {
   "sourceLang": "en",
   "targetLangs": ["fr"],
+  "contentRoots": ["sources"],
+  "outputMode": "mirror",
+  "outputRoot": "outputs",
   "defaultProvider": "ollama",
   "models": {
     "ollama": "llama3.2"
   }
 }
 ```
+
+Polygit adapts to your repo instead of forcing a fixed tree:
+
+| Field | Meaning |
+| --- | --- |
+| `contentRoots` | Where source files live (default `["sources"]`) |
+| `outputMode` | How translations are written (see below) |
+| `outputRoot` | Used when `outputMode` is `mirror` (default `outputs`) |
+
+| `outputMode` | Example for `docs/getting-started.md` → `fr` |
+| --- | --- |
+| `mirror` | `locales/fr/getting-started.md` (with `"outputRoot": "locales"`) |
+| `sidecar` | `docs/getting-started.fr.md` |
+| `in-place-locale` | `docs/fr/getting-started.md` |
+
+**Presets** (fill `contentRoots` + `outputMode` for common frameworks):
+
+```bash
+polygit init --preset=vitepress      # docs/ + in-place-locale
+polygit init --preset=docusaurus     # docs/ + in-place-locale
+polygit init --preset=json-i18n      # locales/ + in-place-locale
+```
+
+The default `sources/` → `outputs/<lang>/` layout (and the demo wiki under `sources/`) remains valid for the MVP workflow.
+
+Paths outside `contentRoots` fail with a clear error — add the folder to config or pass `--root`.
 
 ### `.env` (from `.env.example`)
 

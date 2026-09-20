@@ -7,15 +7,17 @@ import {
   getTranslationMap,
 } from "./repository.js";
 import { getParser } from "../parsers/index.js";
-import { resolveInsideProject } from "./project.js";
+import { toOutputPath } from "./layout.js";
+import { readConfig, resolveInsideProject } from "./project.js";
 
-/** Rebuild translated files under outputs/<lang>/ mirroring sources/. */
+/** Rebuild translated files according to layout (mirror / sidecar / in-place-locale). */
 export function writeOutputDocuments(
   db: Database.Database,
   projectRoot: string,
   lang: string,
   documentPaths?: string[],
 ): string[] {
+  const config = readConfig(projectRoot);
   const paths =
     documentPaths ??
     (
@@ -49,13 +51,7 @@ export function writeOutputDocuments(
       map.set(seg.orderIndex, byOrder.get(seg.orderIndex) ?? seg.sourceText);
     }
 
-    const outputRel = path.posix.join(
-      "outputs",
-      lang,
-      relativePath.startsWith("sources/")
-        ? relativePath.slice("sources/".length)
-        : relativePath,
-    );
+    const outputRel = toOutputPath(relativePath, lang, config);
     const absOut = resolveInsideProject(projectRoot, outputRel);
     fs.mkdirSync(path.dirname(absOut), { recursive: true });
     fs.writeFileSync(absOut, parser.serialize(parsed.skeleton, map), "utf8");
