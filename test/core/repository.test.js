@@ -30,7 +30,7 @@ describe("repository", () => {
     const doc = upsertDocument(db, "sources/hello.md", "markdown");
     const result = replaceDocumentSegments(db, doc, [
       { orderIndex: 0, sourceText: "Hello world." },
-      { orderIndex: 1, sourceText: "Welcome to Polygit." },
+      { orderIndex: 1, sourceText: "Welcome to polygit." },
     ]);
     assert.equal(result.inserted, 2);
     assert.equal(result.unchanged, 0);
@@ -47,11 +47,11 @@ describe("repository", () => {
     const db = openDatabase(root);
     const doc = upsertDocument(db, "sources/hello.md", "markdown");
     replaceDocumentSegments(db, doc, [
-      { orderIndex: 0, sourceText: "Welcome to Polygit." },
+      { orderIndex: 0, sourceText: "Welcome to polygit." },
       { orderIndex: 1, sourceText: "Unrelated sentence." },
     ]);
 
-    const { row } = upsertGlossaryTerm(db, "Polygit", "Polygit", "fr", "Product name");
+    const { row } = upsertGlossaryTerm(db, "polygit", "polygit", "fr", "Product name");
     rebuildGlossaryUsage(db, row.id);
     const staleIds = markGlossarySegmentsStale(db, [row.id]);
     assert.equal(staleIds.length, 1);

@@ -4,11 +4,11 @@ import { detectForgeFromRemoteUrl } from "../../dist/forge/detect.js";
 
 describe("detectForgeFromRemoteUrl", () => {
   it("detects github.com HTTPS remotes", () => {
-    const ref = detectForgeFromRemoteUrl("https://github.com/Minacava/Polygit.git");
+    const ref = detectForgeFromRemoteUrl("https://github.com/Minacava/polygit.git");
     assert.equal(ref.kind, "github");
     assert.equal(ref.owner, "Minacava");
-    assert.equal(ref.name, "Polygit");
-    assert.equal(ref.fullPath, "Minacava/Polygit");
+    assert.equal(ref.name, "polygit");
+    assert.equal(ref.fullPath, "Minacava/polygit");
     assert.equal(ref.host, "api.github.com");
     assert.equal(ref.webBase, "https://github.com");
   });

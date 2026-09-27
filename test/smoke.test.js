@@ -21,7 +21,7 @@ describe("cli smoke", () => {
   it("init → import → status → glossary sync without LLM", () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-smoke-"));
     const initOut = run(cwd, ["init"]);
-    assert.match(initOut, /Initialized Polygit project/i);
+    assert.match(initOut, /Initialized polygit project/i);
 
     assert.ok(fs.existsSync(path.join(cwd, ".gitignore")));
     assert.ok(fs.existsSync(path.join(cwd, ".env.example")));
@@ -34,7 +34,7 @@ describe("cli smoke", () => {
 
     fs.writeFileSync(
       path.join(cwd, "sources", "readme.md"),
-      "# Hello\n\nWelcome to Polygit.\n\nAnother line here.\n",
+      "# Hello\n\nWelcome to polygit.\n\nAnother line here.\n",
       "utf8",
     );
 
@@ -48,7 +48,7 @@ describe("cli smoke", () => {
     const dryOut = run(cwd, ["translate", "fr", "--dry-run", "--provider=claude"]);
     assert.match(dryOut, /\[dry-run\]/i);
 
-    run(cwd, ["glossary", "add", "Polygit", "Polygit", "--lang=fr"]);
+    run(cwd, ["glossary", "add", "polygit", "polygit", "--lang=fr"]);
     const syncOut = run(cwd, ["glossary", "sync", "--lang=fr"]);
     assert.match(syncOut, /stale/i);
 

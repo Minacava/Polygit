@@ -63,7 +63,7 @@ export function requireProjectRoot(startDir = process.cwd()): string {
   const root = findProjectRoot(startDir);
   if (!root) {
     throw new Error(
-      `No Polygit project found. Run "polygit init" in your project directory first.`,
+      `No polygit project found. Run "polygit init" in your project directory first.`,
     );
   }
   return root;

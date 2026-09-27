@@ -1,4 +1,4 @@
-# Polygit
+# polygit
 
 [![npm version](https://img.shields.io/npm/v/polygit.svg)](https://www.npmjs.com/package/polygit)
 
@@ -38,7 +38,7 @@ polygit --help
 ollama pull llama3.2
 ollama serve          # if it is not already running
 
-# 1. Create a Polygit project
+# 1. Create a polygit project
 mkdir my-docs && cd my-docs
 polygit init
 
@@ -176,7 +176,7 @@ polygit publish --lang=fr --allow-unapproved   # skip local approval (not recomm
 | `ollama` | none (local) | `llama3.2` (or the only installed tag) |
 | `huggingface` | `HF_TOKEN` | `meta-llama/Meta-Llama-3-8B-Instruct` |
 
-**How Polygit chooses a model**
+**How polygit chooses a model**
 
 1. `--model` on the command  
 2. `.tmconfig.json` → `models.<provider>` (from `models use`)  
@@ -210,7 +210,7 @@ polygit models use ollama qwen2.5:7b
 }
 ```
 
-Polygit adapts to your repo instead of forcing a fixed tree:
+polygit adapts to your repo instead of forcing a fixed tree:
 
 | Field | Meaning |
 | --- | --- |
@@ -254,7 +254,7 @@ GITLAB_TOKEN=
 
 ## Access & permissions
 
-Polygit does **not** log you into GitHub/GitLab. It reuses Git + a forge token.
+polygit does **not** log you into GitHub/GitLab. It reuses Git + a forge token.
 
 | Action | What you need |
 | --- | --- |
