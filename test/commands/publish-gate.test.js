@@ -59,12 +59,12 @@ describe("publish gate", () => {
     try {
       const db = openDatabase(root);
       fs.mkdirSync(path.join(root, "sources"), { recursive: true });
-      fs.writeFileSync(path.join(root, "sources", "a.md"), "Hello Polygit.\n", "utf8");
+      fs.writeFileSync(path.join(root, "sources", "a.md"), "Hello polygit.\n", "utf8");
       const doc = upsertDocument(db, "sources/a.md", "markdown");
-      replaceDocumentSegments(db, doc, [{ orderIndex: 0, sourceText: "Hello Polygit." }]);
+      replaceDocumentSegments(db, doc, [{ orderIndex: 0, sourceText: "Hello polygit." }]);
       const seg = db.prepare(`SELECT id FROM segments`).get();
-      upsertTranslation(db, seg.id, "fr", "Bonjour Polygit.", "llm", true);
-      const { row } = upsertGlossaryTerm(db, "Polygit", "Polygit", "fr");
+      upsertTranslation(db, seg.id, "fr", "Bonjour polygit.", "llm", true);
+      const { row } = upsertGlossaryTerm(db, "polygit", "polygit", "fr");
       rebuildGlossaryUsage(db, row.id);
       markGlossarySegmentsStale(db, [row.id], "fr");
       db.close();

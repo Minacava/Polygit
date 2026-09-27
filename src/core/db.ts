@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 
-/** Relative path of the on-disk SQLite file inside a Polygit project. */
+/** Relative path of the on-disk SQLite file inside a polygit project. */
 export const DB_RELATIVE_PATH = path.join(".tm", "db.sqlite");
 
 export type DocumentFormat = "markdown" | "json-i18n";

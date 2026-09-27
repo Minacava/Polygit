@@ -59,7 +59,7 @@ describe("init seeding", () => {
     await assert.rejects(() => runInit(root, { preset: "nope" }), /Unknown preset/);
   });
 
-  it("merges Polygit rules into an existing .gitignore", async () => {
+  it("merges polygit rules into an existing .gitignore", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-init-gi-"));
     const prev = process.cwd();
     process.chdir(root);

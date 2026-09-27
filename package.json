@@ -6,12 +6,12 @@
   "author": "Marina Camacho",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Minacava/Polygit.git"
+    "url": "git+https://github.com/Minacava/polygit.git"
   },
   "bugs": {
-    "url": "https://github.com/Minacava/Polygit/issues"
+    "url": "https://github.com/Minacava/polygit/issues"
   },
-  "homepage": "https://github.com/Minacava/Polygit#readme",
+  "homepage": "https://github.com/Minacava/polygit#readme",
   "keywords": [
     "translation",
     "i18n",

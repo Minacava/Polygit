@@ -14,7 +14,7 @@ export const DEFAULT_CONTENT_ROOTS = ["sources"] as const;
 export const DEFAULT_OUTPUT_MODE: OutputMode = "mirror";
 export const DEFAULT_OUTPUT_ROOT = "outputs";
 
-/** Extensions Polygit can import without an explicit --format. */
+/** Extensions polygit can import without an explicit --format. */
 export const CONTENT_EXTENSIONS = [".md", ".markdown", ".json"] as const;
 
 export interface LayoutFields {

@@ -20,7 +20,7 @@ import {
 } from "../core/project.js";
 import { ensureGitRepo } from "../git/git.js";
 
-const PROJECT_GITIGNORE = `# Polygit local state — do not commit
+const PROJECT_GITIGNORE = `# polygit local state — do not commit
 .tm/
 .env
 .env.*
@@ -76,7 +76,7 @@ export async function runInit(
 ): Promise<void> {
   const existing = findProjectRoot(cwd);
   if (existing && path.resolve(existing) === path.resolve(cwd)) {
-    console.log(`Polygit project already initialized at ${existing}`);
+    console.log(`polygit project already initialized at ${existing}`);
     return;
   }
 
@@ -106,7 +106,7 @@ export async function runInit(
   openProjectDb(root).close();
 
   const createdGit = await ensureGitRepo(root);
-  console.log(`Initialized Polygit project in ${root}`);
+  console.log(`Initialized polygit project in ${root}`);
   console.log(`  layout: ${describeLayout(layout)}`);
   if (options.preset) console.log(`  preset: ${options.preset}`);
   console.log(`  created: ${CONFIG_FILENAME}, .tm/db.sqlite, .gitignore, .env.example`);
@@ -114,7 +114,7 @@ export async function runInit(
 }
 
 
-/** Create or merge Polygit ignore rules into an existing .gitignore. */
+/** Create or merge polygit ignore rules into an existing .gitignore. */
 function ensureGitignore(root: string): void {
   const gitignorePath = path.join(root, ".gitignore");
   const required = [".tm/", ".env", ".env.*", "!.env.example"];
@@ -136,7 +136,7 @@ function ensureGitignore(root: string): void {
   if (missing.length === 0) return;
   const addition =
     (current.endsWith("\n") || current.length === 0 ? "" : "\n") +
-    "\n# Polygit local state\n" +
+    "\n# polygit local state\n" +
     missing.join("\n") +
     "\n";
   fs.appendFileSync(gitignorePath, addition, "utf8");
