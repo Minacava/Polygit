@@ -141,18 +141,18 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
     const detail = err instanceof Error ? err.message : String(err);
     throw new Error(
       `Push failed. You need write access to this remote (or publish from your fork). ` +
-        `Polygit does not grant GitHub/GitLab permissions — use SSH/HTTPS credentials that can push.\n${detail}`,
+        `polygit does not grant GitHub/GitLab permissions — use SSH/HTTPS credentials that can push.\n${detail}`,
     );
   }
 
   const title =
-    options.title ?? `translate: ${options.lang ?? "translations"} via Polygit`;
+    options.title ?? `translate: ${options.lang ?? "translations"} via polygit`;
   const body =
     options.body ??
     [
       `## Summary`,
       ``,
-      `Translation update prepared with Polygit.`,
+      `Translation update prepared with polygit.`,
       options.lang ? `- Language: \`${options.lang}\`` : null,
       `- Locally approved segments: ${approved}`,
       ``,

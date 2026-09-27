@@ -23,7 +23,7 @@ async function setupProject() {
   writeConfig(root, { ...DEFAULT_CONFIG, defaultProvider: "ollama" });
   fs.writeFileSync(
     path.join(root, "sources", "hello.md"),
-    "Hello world.\n\nWelcome to Polygit.\n",
+    "Hello world.\n\nWelcome to polygit.\n",
     "utf8",
   );
   runImport("sources/hello.md", { format: "markdown" });
