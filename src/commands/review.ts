@@ -1,6 +1,7 @@
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import type { SegmentStatus } from "../core/db.js";
+import { assertLangCode } from "../core/lang.js";
 import { writeOutputDocuments } from "../core/output.js";
 import { openProjectDb, requireProjectRoot } from "../core/project.js";
 import { listReviewSegments, upsertTranslation } from "../core/repository.js";
@@ -16,6 +17,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
       `Language is required. Pass --lang=<code> (e.g. polygit review --lang=fr).`,
     );
   }
+  assertLangCode(options.lang);
   const root = requireProjectRoot();
   const db = openProjectDb(root);
   const rl = readline.createInterface({ input, output });

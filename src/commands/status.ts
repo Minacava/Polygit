@@ -4,10 +4,12 @@ import {
   layoutFromConfig,
   listContentFiles,
 } from "../core/layout.js";
+import { assertLangCode } from "../core/lang.js";
 import { openProjectDb, readConfig, requireProjectRoot } from "../core/project.js";
 import { getStatusCounts } from "../core/repository.js";
 
 export function runStatus(options: { lang?: string } = {}): void {
+  if (options.lang !== undefined) assertLangCode(options.lang);
   const root = requireProjectRoot();
   const config = readConfig(root);
   const layout = layoutFromConfig(config);
