@@ -35,6 +35,11 @@ export interface TmConfig {
   defaultProvider: ProviderName;
   /** Optional per-provider model ids (e.g. Ollama tag or HF model id). */
   models: ProviderModels;
+  /**
+   * Extra forge API hosts allowed for `publish` (Enterprise / self-hosted).
+   * github.com and gitlab.com are always trusted; other hosts also need `--forge`.
+   */
+  forgeHosts: string[];
 }
 
 export const DEFAULT_CONFIG: TmConfig = {
@@ -45,6 +50,7 @@ export const DEFAULT_CONFIG: TmConfig = {
   outputRoot: DEFAULT_OUTPUT_ROOT,
   defaultProvider: "ollama",
   models: {},
+  forgeHosts: [],
 };
 
 export const CONFIG_FILENAME = ".tmconfig.json";
@@ -85,7 +91,36 @@ export function readConfig(projectRoot: string): TmConfig {
     outputRoot: parseOutputRoot(raw.outputRoot, outputMode),
     defaultProvider: parseProviderName(raw.defaultProvider),
     models: parseProviderModels(raw.models),
+    forgeHosts: parseForgeHosts(raw.forgeHosts),
   };
+}
+
+/** Hostnames only (no scheme, path, or credentials). */
+export function parseForgeHosts(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new Error("forgeHosts must be an array of hostnames");
+  }
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string" || !item.trim()) {
+      throw new Error("forgeHosts entries must be non-empty hostnames");
+    }
+    const host = item.trim().toLowerCase().replace(/\.$/, "");
+    if (
+      host.includes("://") ||
+      host.includes("/") ||
+      host.includes("@") ||
+      host.includes(" ") ||
+      host.includes("\\")
+    ) {
+      throw new Error(
+        `Invalid forgeHosts entry "${item}": use a hostname only (e.g. "git.example.com")`,
+      );
+    }
+    out.push(host);
+  }
+  return out;
 }
 
 function parseProviderModels(value: unknown): ProviderModels {

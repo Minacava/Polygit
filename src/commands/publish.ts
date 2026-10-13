@@ -1,7 +1,11 @@
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { assertLangCode } from "../core/lang.js";
-import { openProjectDb, requireProjectRoot } from "../core/project.js";
+import {
+  openProjectDb,
+  readConfig,
+  requireProjectRoot,
+} from "../core/project.js";
 import {
   countApprovedTranslations,
   countUnapprovedTranslations,
@@ -16,7 +20,14 @@ import {
   hasUncommittedTranslationChanges,
   pushBranch,
 } from "../git/git.js";
-import { createForgeClient, detectForgeFromRemoteUrl } from "../forge/index.js";
+import {
+  createForgeClient,
+  detectForgeFromRemoteUrl,
+  isTrustedForgeHost,
+  normalizeForgeHostname,
+  peekRemoteHostname,
+} from "../forge/index.js";
+import type { ForgeRepoRef } from "../forge/index.js";
 
 export interface PublishOptions {
   /** Override forge detection (github | gitlab). */
@@ -30,6 +41,11 @@ export interface PublishOptions {
   /** Skip local-approval gate (not recommended). */
   allowUnapproved?: boolean;
   targetBranch?: string;
+  /**
+   * Confirm sending forge API tokens to a non-github.com / non-gitlab.com host.
+   * Independent of --yes (commit confirmation).
+   */
+  confirmForgeHost?: boolean;
 }
 
 /**
@@ -76,7 +92,9 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
     );
   }
 
-  const repo = detectForgeFromRemoteUrl(remoteUrl, options.forge);
+  const config = readConfig(root);
+  const repo = await resolvePublishForgeRepo(remoteUrl, options, config.forgeHosts);
+  // Only create the client (which reads tokens) after the host is confirmed.
   const forge = createForgeClient(repo.kind);
 
   const targetBranch = options.targetBranch ?? (await getDefaultRemoteBranch(root));
@@ -194,4 +212,65 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
   console.log(
     `Remote approval: merge ${label.toLowerCase()} ${ref} on ${repo.kind} to land the translations.`,
   );
+}
+
+async function resolvePublishForgeRepo(
+  remoteUrl: string,
+  options: PublishOptions,
+  forgeHosts: string[],
+): Promise<ForgeRepoRef> {
+  const host = peekRemoteHostname(remoteUrl);
+  let confirmUntrustedHost = Boolean(options.confirmForgeHost);
+
+  if (!isTrustedForgeHost(host) && !confirmUntrustedHost) {
+    const allowlisted = forgeHosts.some(
+      (entry) => normalizeForgeHostname(entry) === normalizeForgeHostname(host),
+    );
+    if (!allowlisted) {
+      if (!options.forge) {
+        throw new Error(
+          `Cannot detect forge for host "${host}". ` +
+            `Only github.com and gitlab.com are trusted automatically. ` +
+            `Pass --forge=github|gitlab and confirm the host (or add it to forgeHosts in .tmconfig.json).`,
+        );
+      }
+      confirmUntrustedHost = await confirmUntrustedForgeHost(host, options.forge);
+    }
+  }
+
+  return detectForgeFromRemoteUrl(remoteUrl, {
+    ...(options.forge ? { forge: options.forge } : {}),
+    allowedHosts: forgeHosts,
+    confirmUntrustedHost,
+  });
+}
+
+async function confirmUntrustedForgeHost(
+  host: string,
+  forge: "github" | "gitlab",
+): Promise<boolean> {
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      `Refusing to send forge credentials to untrusted host "${host}". ` +
+        `Add it to forgeHosts in .tmconfig.json, or pass --confirm-forge-host after verifying the remote.`,
+    );
+  }
+
+  const tokenName = forge === "github" ? "GITHUB_TOKEN" : "GITLAB_TOKEN";
+  const rl = readline.createInterface({ input, output });
+  try {
+    const answer = (
+      await rl.question(
+        `Host "${host}" is not github.com/gitlab.com. Send ${tokenName} to https://${host} as ${forge}? [y/N] > `,
+      )
+    )
+      .trim()
+      .toLowerCase();
+    if (answer !== "y" && answer !== "yes") {
+      throw new Error(`Aborted: untrusted forge host "${host}" was not confirmed.`);
+    }
+  } finally {
+    rl.close();
+  }
+  return true;
 }

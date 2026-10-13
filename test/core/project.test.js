@@ -86,4 +86,23 @@ describe("project", () => {
     assert.equal("nope" in config.models, false);
   });
 
+  it("round-trips forgeHosts and rejects unsafe entries", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-project-"));
+    writeConfig(root, {
+      ...DEFAULT_CONFIG,
+      forgeHosts: ["git.example.com", "github.mycompany.com"],
+    });
+    assert.deepEqual(readConfig(root).forgeHosts, [
+      "git.example.com",
+      "github.mycompany.com",
+    ]);
+
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({ forgeHosts: ["https://evil.example/path"] }),
+      "utf8",
+    );
+    assert.throws(() => readConfig(root), /hostname only/i);
+  });
+
 });
