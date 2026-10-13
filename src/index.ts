@@ -26,7 +26,9 @@ export {
 } from "./core/segmenter.js";
 
 export {
+  TranslationMemoryIndex,
   matchTranslationMemory,
+  mapPool,
   similarity,
   DEFAULT_FUZZY_THRESHOLD,
 } from "./core/matcher.js";
