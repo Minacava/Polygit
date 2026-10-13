@@ -1,5 +1,6 @@
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { assertLangCode } from "../core/lang.js";
 import { openProjectDb, requireProjectRoot } from "../core/project.js";
 import {
   countApprovedTranslations,
@@ -40,6 +41,8 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
       `Language is required. Pass --lang=<code> (e.g. polygit publish --lang=fr).`,
     );
   }
+
+  assertLangCode(options.lang);
 
   const root = requireProjectRoot();
 
