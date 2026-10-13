@@ -1,3 +1,4 @@
+import { fetchJson, HttpJsonError } from "../http/fetch-json.js";
 import {
   buildTranslationMessages,
   redactSecrets,
@@ -14,6 +15,7 @@ interface ClaudeResponse {
 export interface ClaudeProviderOptions {
   apiKey?: string;
   model?: string;
+  fetchImpl?: typeof fetch;
 }
 
 export function createClaudeProvider(
@@ -43,9 +45,9 @@ export function createClaudeProvider(
       const system = messages.find((m) => m.role === "system")?.content ?? "";
       const user = messages.find((m) => m.role === "user")?.content ?? text;
 
-      let response: Response;
+      let result;
       try {
-        response = await fetch("https://api.anthropic.com/v1/messages", {
+        result = await fetchJson<ClaudeResponse>("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -58,20 +60,22 @@ export function createClaudeProvider(
             system,
             messages: [{ role: "user", content: user }],
           }),
-          signal: AbortSignal.timeout(60_000),
+          ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
         });
       } catch (err) {
+        if (err instanceof HttpJsonError) {
+          throw new Error(`Claude API error (${err.status}): ${redactSecrets(err.message)}`);
+        }
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`Claude request failed: ${redactSecrets(msg)}`);
       }
 
-      const body = (await response.json()) as ClaudeResponse;
-      if (!response.ok) {
-        const detail = body.error?.message ?? response.statusText;
-        throw new Error(`Claude API error (${response.status}): ${redactSecrets(detail)}`);
+      if (!result.ok) {
+        const detail = result.data.error?.message ?? `HTTP ${result.status}`;
+        throw new Error(`Claude API error (${result.status}): ${redactSecrets(detail)}`);
       }
 
-      const textOut = body.content?.find((c) => c.type === "text")?.text?.trim();
+      const textOut = result.data.content?.find((c) => c.type === "text")?.text?.trim();
       if (!textOut) {
         throw new Error("Claude returned an empty translation.");
       }
