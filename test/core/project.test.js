@@ -70,20 +70,17 @@ describe("project", () => {
     assert.equal(config.models.claude, undefined);
   });
 
-  it("ignores invalid models keys when reading config", () => {
+  it("rejects unknown models keys when reading config", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-project-"));
     fs.writeFileSync(
       path.join(root, ".tmconfig.json"),
       JSON.stringify({
         defaultProvider: "ollama",
-        models: { ollama: "mistral", nope: "x", openai: "  " },
+        models: { ollama: "mistral", nope: "x" },
       }),
       "utf8",
     );
-    const config = readConfig(root);
-    assert.equal(config.models.ollama, "mistral");
-    assert.equal(config.models.openai, undefined);
-    assert.equal("nope" in config.models, false);
+    assert.throws(() => readConfig(root), /Invalid models key/i);
   });
 
   it("round-trips forgeHosts and rejects unsafe entries", () => {
@@ -103,6 +100,63 @@ describe("project", () => {
       "utf8",
     );
     assert.throws(() => readConfig(root), /hostname only/i);
+  });
+
+  it("rejects malformed or unsafe .tmconfig.json from untrusted repos", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-project-bad-"));
+
+    fs.writeFileSync(path.join(root, ".tmconfig.json"), "[1,2,3]", "utf8");
+    assert.throws(() => readConfig(root), /expected a JSON object/i);
+
+    fs.writeFileSync(path.join(root, ".tmconfig.json"), "{not json", "utf8");
+    assert.throws(() => readConfig(root), /not valid JSON/i);
+
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({
+        sourceLang: "en",
+        contentRoots: ["../outside"],
+      }),
+      "utf8",
+    );
+    assert.throws(() => readConfig(root), /Invalid content\/output root/i);
+
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({
+        sourceLang: "en/../../etc",
+        targetLangs: ["fr"],
+      }),
+      "utf8",
+    );
+    assert.throws(() => readConfig(root), /Invalid sourceLang/i);
+
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({
+        contentRoots: ["/etc/passwd"],
+      }),
+      "utf8",
+    );
+    assert.throws(() => readConfig(root), /absolute path/i);
+
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({
+        outputMode: "not-a-mode",
+      }),
+      "utf8",
+    );
+    assert.throws(() => readConfig(root), /Invalid outputMode/i);
+
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({
+        models: { ollama: "x".repeat(500) },
+      }),
+      "utf8",
+    );
+    assert.throws(() => readConfig(root), /maximum length/i);
   });
 
 });

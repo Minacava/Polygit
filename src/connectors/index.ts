@@ -32,6 +32,8 @@ export function createProvider(
 export type { ProviderName, TranslateContext, TranslationProvider } from "./provider.js";
 export {
   buildTranslationMessages,
+  DOCUMENT_DATA_END,
+  DOCUMENT_DATA_START,
   isProviderName,
   parseProviderName,
   PROVIDER_NAMES,

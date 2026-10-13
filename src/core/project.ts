@@ -7,6 +7,7 @@ import {
   type ProviderName,
 } from "../connectors/provider.js";
 import { openDatabase } from "./db.js";
+import { assertLangCode } from "./lang.js";
 import {
   DEFAULT_CONTENT_ROOTS,
   DEFAULT_OUTPUT_MODE,
@@ -22,6 +23,13 @@ export type { OutputMode };
 export { resolveInsideProject, toPosixRelative } from "./paths.js";
 
 export type ProviderModels = Partial<Record<ProviderName, string>>;
+
+/** Cloned-repo .tmconfig.json is untrusted; keep it small and typed. */
+export const MAX_TMCONFIG_BYTES = 64_000;
+export const MAX_TARGET_LANGS = 64;
+export const MAX_FORGE_HOSTS = 32;
+export const MAX_MODEL_ID_LENGTH = 200;
+export const MAX_HOSTNAME_LENGTH = 253;
 
 export interface TmConfig {
   sourceLang: string;
@@ -77,22 +85,63 @@ export function requireProjectRoot(startDir = process.cwd()): string {
 
 export function readConfig(projectRoot: string): TmConfig {
   const file = path.join(projectRoot, CONFIG_FILENAME);
-  const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<TmConfig> & {
-    contentRoots?: unknown;
-    outputMode?: unknown;
-    outputRoot?: unknown;
-  };
-  const outputMode = parseOutputMode(raw.outputMode);
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(file);
+  } catch {
+    throw new Error(`Missing ${CONFIG_FILENAME} in ${projectRoot}`);
+  }
+  if (!stat.isFile()) {
+    throw new Error(`${CONFIG_FILENAME} is not a regular file`);
+  }
+  if (stat.size > MAX_TMCONFIG_BYTES) {
+    throw new Error(
+      `${CONFIG_FILENAME} is too large (${stat.size} bytes; max ${MAX_TMCONFIG_BYTES}). ` +
+        `Treat config from cloned repos as untrusted.`,
+    );
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    throw new Error(`Invalid ${CONFIG_FILENAME}: not valid JSON`);
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Invalid ${CONFIG_FILENAME}: expected a JSON object`);
+  }
+
+  const obj = raw as Record<string, unknown>;
+  const outputMode = parseOutputMode(obj.outputMode);
+
   return {
-    sourceLang: raw.sourceLang ?? DEFAULT_CONFIG.sourceLang,
-    targetLangs: Array.isArray(raw.targetLangs) ? raw.targetLangs : [],
-    contentRoots: parseContentRoots(raw.contentRoots),
+    sourceLang: parseSourceLang(obj.sourceLang),
+    targetLangs: parseTargetLangs(obj.targetLangs),
+    contentRoots: parseContentRoots(obj.contentRoots),
     outputMode,
-    outputRoot: parseOutputRoot(raw.outputRoot, outputMode),
-    defaultProvider: parseProviderName(raw.defaultProvider),
-    models: parseProviderModels(raw.models),
-    forgeHosts: parseForgeHosts(raw.forgeHosts),
+    outputRoot: parseOutputRoot(obj.outputRoot, outputMode),
+    defaultProvider: parseProviderName(obj.defaultProvider),
+    models: parseProviderModels(obj.models),
+    forgeHosts: parseForgeHosts(obj.forgeHosts),
   };
+}
+
+function parseSourceLang(value: unknown): string {
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_CONFIG.sourceLang;
+  }
+  return assertLangCode(value, "sourceLang");
+}
+
+function parseTargetLangs(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new Error("targetLangs must be an array of language codes");
+  }
+  if (value.length > MAX_TARGET_LANGS) {
+    throw new Error(`targetLangs exceeds maximum of ${MAX_TARGET_LANGS} entries`);
+  }
+  return value.map((item, i) => assertLangCode(item, `targetLangs[${i}]`));
 }
 
 /** Hostnames only (no scheme, path, or credentials). */
@@ -101,10 +150,18 @@ export function parseForgeHosts(value: unknown): string[] {
   if (!Array.isArray(value)) {
     throw new Error("forgeHosts must be an array of hostnames");
   }
+  if (value.length > MAX_FORGE_HOSTS) {
+    throw new Error(`forgeHosts exceeds maximum of ${MAX_FORGE_HOSTS} entries`);
+  }
   const out: string[] = [];
   for (const item of value) {
     if (typeof item !== "string" || !item.trim()) {
       throw new Error("forgeHosts entries must be non-empty hostnames");
+    }
+    if (item.length > MAX_HOSTNAME_LENGTH) {
+      throw new Error(
+        `forgeHosts entry exceeds ${MAX_HOSTNAME_LENGTH} characters`,
+      );
     }
     const host = item.trim().toLowerCase().replace(/\.$/, "");
     if (
@@ -112,7 +169,8 @@ export function parseForgeHosts(value: unknown): string[] {
       host.includes("/") ||
       host.includes("@") ||
       host.includes(" ") ||
-      host.includes("\\")
+      host.includes("\\") ||
+      host.includes("\0")
     ) {
       throw new Error(
         `Invalid forgeHosts entry "${item}": use a hostname only (e.g. "git.example.com")`,
@@ -124,11 +182,32 @@ export function parseForgeHosts(value: unknown): string[] {
 }
 
 function parseProviderModels(value: unknown): ProviderModels {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  if (value === undefined || value === null) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("models must be an object of provider → model id strings");
+  }
   const out: ProviderModels = {};
   for (const [key, model] of Object.entries(value as Record<string, unknown>)) {
-    if (!isProviderName(key)) continue;
-    if (typeof model === "string" && model.trim()) out[key] = model.trim();
+    if (!isProviderName(key)) {
+      throw new Error(
+        `Invalid models key ${JSON.stringify(key)}. Use claude, openai, ollama, or huggingface.`,
+      );
+    }
+    if (model === undefined || model === null || model === "") continue;
+    if (typeof model !== "string") {
+      throw new Error(`models.${key} must be a string`);
+    }
+    const trimmed = model.trim();
+    if (!trimmed) continue;
+    if (trimmed.length > MAX_MODEL_ID_LENGTH) {
+      throw new Error(
+        `models.${key} exceeds maximum length of ${MAX_MODEL_ID_LENGTH}`,
+      );
+    }
+    if (trimmed.includes("\0")) {
+      throw new Error(`models.${key} contains an invalid NUL byte`);
+    }
+    out[key] = trimmed;
   }
   return out;
 }
