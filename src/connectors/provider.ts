@@ -74,12 +74,20 @@ export function buildTranslationMessages(
 
 /** Redact likely API keys from error strings before printing. */
 export function redactSecrets(message: string): string {
+  // More-specific prefixes first so they are not swallowed by the generic sk- rule.
   return message
-    .replace(/sk-[a-zA-Z0-9_-]{10,}/g, "sk-***")
     .replace(/sk-ant-[a-zA-Z0-9_-]{10,}/g, "sk-ant-***")
+    .replace(/sk-proj-[a-zA-Z0-9_-]{10,}/g, "sk-proj-***")
+    .replace(/sk-[a-zA-Z0-9_-]{10,}/g, "sk-***")
+    .replace(/gsk_[a-zA-Z0-9_-]{10,}/g, "gsk_***")
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "AIza***")
     .replace(/glpat-[a-zA-Z0-9_-]{10,}/g, "glpat-***")
-    .replace(/ghp_[a-zA-Z0-9]{20,}/g, "ghp_***")
+    .replace(/gh[pousr]_[a-zA-Z0-9]{20,}/g, "gh*_***")
     .replace(/github_pat_[a-zA-Z0-9_]{20,}/g, "github_pat_***")
     .replace(/hf_[a-zA-Z0-9]{20,}/g, "hf_***")
+    .replace(/npm_[a-zA-Z0-9]{20,}/g, "npm_***")
+    .replace(/xox[abprs]-[a-zA-Z0-9-]{10,}/g, "xox*-***")
+    .replace(/AKIA[0-9A-Z]{16}/g, "AKIA***")
+    .replace(/ya29\.[a-zA-Z0-9._-]+/g, "ya29.***")
     .replace(/Bearer\s+[a-zA-Z0-9._-]+/gi, "Bearer ***");
 }
