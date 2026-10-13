@@ -65,40 +65,88 @@ export function isLayoutPresetName(value: string): value is LayoutPresetName {
   return (LAYOUT_PRESET_NAMES as readonly string[]).includes(value);
 }
 
+/** Max length for a single content/output root path segment chain. */
+export const MAX_ROOT_PATH_LENGTH = 200;
+/** Max number of contentRoots entries accepted from .tmconfig.json. */
+export const MAX_CONTENT_ROOTS = 32;
+
 /** Normalize posix-ish relative root segments (no leading/trailing slashes). */
 export function normalizeRootPath(raw: string): string {
+  if (typeof raw !== "string") {
+    throw new Error(`Invalid content/output root: ${JSON.stringify(raw)}`);
+  }
+  if (raw.includes("\0")) {
+    throw new Error(`Invalid content/output root (NUL byte): ${JSON.stringify(raw)}`);
+  }
+  if (raw.length > MAX_ROOT_PATH_LENGTH) {
+    throw new Error(
+      `Invalid content/output root: path exceeds ${MAX_ROOT_PATH_LENGTH} characters`,
+    );
+  }
+  if (path.posix.isAbsolute(raw) || path.win32.isAbsolute(raw) || /^[A-Za-z]:/.test(raw)) {
+    throw new Error(`Invalid content/output root (absolute path): ${raw}`);
+  }
   const normalized = raw
     .replace(/\\/g, "/")
     .replace(/^\.\/+/, "")
     .replace(/\/+$/, "");
-  if (!normalized || normalized === "." || normalized.includes("..")) {
+  if (
+    !normalized ||
+    normalized === "." ||
+    normalized.includes("..") ||
+    normalized.startsWith("/") ||
+    normalized.includes("//")
+  ) {
     throw new Error(`Invalid content/output root: ${raw}`);
   }
   return normalized;
 }
 
 export function parseContentRoots(value: unknown): string[] {
-  if (!Array.isArray(value) || value.length === 0) {
+  if (value === undefined || value === null) {
+    return [...DEFAULT_CONTENT_ROOTS];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error("contentRoots must be an array of relative directory paths");
+  }
+  if (value.length > MAX_CONTENT_ROOTS) {
+    throw new Error(`contentRoots exceeds maximum of ${MAX_CONTENT_ROOTS} entries`);
+  }
+  if (value.length === 0) {
     return [...DEFAULT_CONTENT_ROOTS];
   }
   const roots: string[] = [];
   for (const item of value) {
-    if (typeof item !== "string" || !item.trim()) continue;
+    if (typeof item !== "string") {
+      throw new Error(
+        `Invalid contentRoots entry: expected string, got ${typeof item}`,
+      );
+    }
+    if (!item.trim()) {
+      throw new Error("Invalid contentRoots entry: empty path");
+    }
     roots.push(normalizeRootPath(item.trim()));
   }
   return roots.length > 0 ? roots : [...DEFAULT_CONTENT_ROOTS];
 }
 
 export function parseOutputMode(value: unknown): OutputMode {
+  if (value === undefined || value === null) return DEFAULT_OUTPUT_MODE;
   if (isOutputMode(value)) return value;
-  return DEFAULT_OUTPUT_MODE;
+  throw new Error(
+    `Invalid outputMode: ${JSON.stringify(value)}. Use mirror, sidecar, or in-place-locale.`,
+  );
 }
 
 export function parseOutputRoot(value: unknown, outputMode: OutputMode): string {
-  if (typeof value === "string" && value.trim()) {
-    return normalizeRootPath(value.trim());
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_OUTPUT_ROOT;
   }
-  return outputMode === "mirror" ? DEFAULT_OUTPUT_ROOT : DEFAULT_OUTPUT_ROOT;
+  if (typeof value !== "string") {
+    throw new Error(`Invalid outputRoot: expected string, got ${typeof value}`);
+  }
+  void outputMode;
+  return normalizeRootPath(value.trim());
 }
 
 export function layoutFromConfig(config: LayoutFields): LayoutConfig {
