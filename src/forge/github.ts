@@ -1,4 +1,5 @@
 import { redactSecrets } from "../connectors/index.js";
+import { fetchJson, HttpJsonError } from "../http/fetch-json.js";
 import type {
   CreateMergeRequestInput,
   CreateMergeRequestResult,
@@ -27,9 +28,14 @@ export function createGitHubClient(
     ): Promise<CreateMergeRequestResult> {
       const apiBase = githubApiBase(repo.host);
 
-      const response = await fetchImpl(
-        `${apiBase}/repos/${repo.owner}/${repo.name}/pulls`,
-        {
+      let result;
+      try {
+        result = await fetchJson<{
+          html_url?: string;
+          number?: number;
+          message?: string;
+          errors?: Array<{ message?: string }>;
+        }>(`${apiBase}/repos/${repo.owner}/${repo.name}/pulls`, {
           method: "POST",
           headers: {
             accept: "application/vnd.github+json",
@@ -44,29 +50,28 @@ export function createGitHubClient(
             body: input.body,
             draft: Boolean(input.draft),
           }),
-          signal: AbortSignal.timeout(60_000),
-        },
-      );
+          fetchImpl,
+        });
+      } catch (err) {
+        if (err instanceof HttpJsonError) {
+          throw new ForgeApiError("github", err.status, redactSecrets(err.message));
+        }
+        throw err;
+      }
 
-      const body = (await response.json()) as {
-        html_url?: string;
-        number?: number;
-        message?: string;
-        errors?: Array<{ message?: string }>;
-      };
-
-      if (response.status === 401 || response.status === 403) {
+      const body = result.data;
+      if (result.status === 401 || result.status === 403) {
         throw new ForgeAuthError(
           "github",
-          redactSecrets(body.message ?? response.statusText),
+          redactSecrets(body.message ?? `HTTP ${result.status}`),
         );
       }
-      if (!response.ok || !body.html_url || body.number == null) {
+      if (!result.ok || !body.html_url || body.number == null) {
         const detail =
           body.message ??
           body.errors?.map((e) => e.message).filter(Boolean).join("; ") ??
-          response.statusText;
-        throw new ForgeApiError("github", response.status, redactSecrets(detail));
+          `HTTP ${result.status}`;
+        throw new ForgeApiError("github", result.status, redactSecrets(detail));
       }
 
       return { url: body.html_url, number: body.number };

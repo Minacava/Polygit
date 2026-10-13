@@ -8,16 +8,13 @@ describe("forge HTTP clients", () => {
     const calls = [];
     const fetchImpl = async (url, init) => {
       calls.push({ url: String(url), init });
-      return {
-        ok: true,
-        status: 201,
-        async json() {
-          return {
-            number: 42,
-            html_url: "https://github.com/acme/docs/pull/42",
-          };
-        },
-      };
+      return new Response(
+        JSON.stringify({
+          number: 42,
+          html_url: "https://github.com/acme/docs/pull/42",
+        }),
+        { status: 201 },
+      );
     };
 
     const client = createGitHubClient("gh-test-token", fetchImpl);
@@ -55,16 +52,13 @@ describe("forge HTTP clients", () => {
     const calls = [];
     const fetchImpl = async (url, init) => {
       calls.push({ url: String(url), init });
-      return {
-        ok: true,
-        status: 201,
-        async json() {
-          return {
-            iid: 7,
-            web_url: "https://gitlab.com/acme/docs/-/merge_requests/7",
-          };
-        },
-      };
+      return new Response(
+        JSON.stringify({
+          iid: 7,
+          web_url: "https://gitlab.com/acme/docs/-/merge_requests/7",
+        }),
+        { status: 201 },
+      );
     };
 
     const client = createGitLabClient("gl-test-token", fetchImpl);
