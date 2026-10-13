@@ -121,7 +121,7 @@ cp .env.example .env
 # Set ANTHROPIC_API_KEY or OPENAI_API_KEY
 
 polygit import sources/intro.md --format=markdown
-polygit models use claude claude-3-5-haiku-latest
+polygit models use claude claude-haiku-4-5
 polygit translate fr
 
 # Prefer consistent product terms
@@ -187,7 +187,7 @@ polygit publish --lang=fr --allow-unapproved   # skip local approval (not recomm
 
 | Provider | Auth | Default model |
 | --- | --- | --- |
-| `claude` | `ANTHROPIC_API_KEY` | `claude-3-5-haiku-latest` |
+| `claude` | `ANTHROPIC_API_KEY` | `claude-haiku-4-5` |
 | `openai` | `OPENAI_API_KEY` | `gpt-4o-mini` |
 | `ollama` | none (local) | `llama3.2` (or the only installed tag) |
 | `huggingface` | `HF_TOKEN` | `meta-llama/Meta-Llama-3-8B-Instruct` |
