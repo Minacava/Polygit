@@ -123,4 +123,49 @@ describe("translate pipeline", () => {
       process.chdir(prev);
     }
   });
+
+  it("retries then leaves unapproved when LLM drops placeholders", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-ph-"));
+    const prev = process.cwd();
+    process.chdir(root);
+    try {
+      await runInit();
+      writeConfig(root, { ...DEFAULT_CONFIG, defaultProvider: "ollama" });
+      fs.writeFileSync(
+        path.join(root, "sources", "hello.md"),
+        "Hello {name}.\n",
+        "utf8",
+      );
+      runImport("sources/hello.md", { format: "markdown" });
+
+      let calls = 0;
+      const mock = {
+        name: "ollama",
+        async translateSegment() {
+          calls += 1;
+          return "Bonjour ami."; // drops {name}
+        },
+      };
+
+      await runTranslate("fr", {
+        providerInstance: mock,
+        provider: "ollama",
+        placeholderRetries: 1,
+      });
+      assert.equal(calls, 2, "should retry once after placeholder loss");
+
+      const db = openDatabase(root);
+      assert.equal(countUnapprovedTranslations(db, "fr"), 1);
+      const tm = getTmEntries(db, "fr");
+      assert.equal(
+        tm.some((e) => e.source_text.includes("{name}")),
+        false,
+        "broken translation must not enter TM",
+      );
+      db.close();
+    } finally {
+      process.chdir(prev);
+    }
+  });
 });
+

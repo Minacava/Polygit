@@ -8,6 +8,7 @@ import { pickOllamaModelInteractively } from "./models.js";
 import { assertLangCode } from "../core/lang.js";
 import { matchTranslationMemory } from "../core/matcher.js";
 import { writeOutputDocuments } from "../core/output.js";
+import { missingPlaceholders } from "../core/placeholders.js";
 import {
   openProjectDb,
   readConfig,
@@ -35,6 +36,8 @@ export interface TranslateOptions {
   acceptFuzzy?: boolean;
   /** Test seam: inject a provider instead of creating one. */
   providerInstance?: import("../connectors/index.js").TranslationProvider;
+  /** Max LLM retries when placeholders are dropped (default 1 retry). */
+  placeholderRetries?: number;
 }
 
 export async function runTranslate(lang: string, options: TranslateOptions = {}): Promise<void> {
@@ -118,21 +121,47 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
         continue;
       }
 
-      const translated = await ensureProvider().translateSegment(
-        segment.source_text,
-        config.sourceLang,
-        lang,
-        { glossary, documentPath: segment.document_path },
-      );
-      upsertTranslation(db, segment.id, lang, translated, "llm");
-      upsertTranslationMemory(db, segment.source_text, translated, lang);
-      tmEntries.push({
-        id: `runtime_${tmEntries.length}`,
-        source_text: segment.source_text,
-        target_text: translated,
-        lang,
-        usage_count: 1,
-      });
+      const maxAttempts = Math.max(1, (options.placeholderRetries ?? 1) + 1);
+      let translated = "";
+      let missing: string[] = [];
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        translated = await ensureProvider().translateSegment(
+          segment.source_text,
+          config.sourceLang,
+          lang,
+          {
+            glossary,
+            documentPath: segment.document_path,
+            ...(attempt > 0
+              ? {
+                  notes:
+                    `Previous translation dropped required placeholders: ${missing.join(", ")}. ` +
+                    `Preserve every placeholder, HTML tag, and link exactly.`,
+                }
+              : {}),
+          },
+        );
+        missing = missingPlaceholders(segment.source_text, translated);
+        if (missing.length === 0) break;
+      }
+
+      if (missing.length > 0) {
+        // Keep draft for review; do not write broken text into TM as exact memory.
+        upsertTranslation(db, segment.id, lang, translated, "llm", false);
+        console.warn(
+          `Placeholder check failed for ${segment.document_path} (${segment.id.slice(0, 8)}…): missing ${missing.join(", ")}. Left unapproved for review.`,
+        );
+      } else {
+        upsertTranslation(db, segment.id, lang, translated, "llm");
+        upsertTranslationMemory(db, segment.source_text, translated, lang);
+        tmEntries.push({
+          id: `runtime_${tmEntries.length}`,
+          source_text: segment.source_text,
+          target_text: translated,
+          lang,
+          usage_count: 1,
+        });
+      }
       llm += 1;
     }
 
