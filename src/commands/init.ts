@@ -46,7 +46,7 @@ HF_TOKEN=
 # POLYGIT_HF_MODEL=meta-llama/Meta-Llama-3-8B-Instruct
 
 # Optional cloud model overrides (or use \`polygit models use\`)
-# POLYGIT_CLAUDE_MODEL=claude-3-5-haiku-latest
+# POLYGIT_CLAUDE_MODEL=claude-haiku-4-5
 # POLYGIT_OPENAI_MODEL=gpt-4o-mini
 
 # Forge tokens for \`polygit publish\`
