@@ -6,7 +6,7 @@ import {
 } from "../connectors/index.js";
 import { pickOllamaModelInteractively } from "./models.js";
 import { assertLangCode } from "../core/lang.js";
-import { matchTranslationMemory } from "../core/matcher.js";
+import { mapPool, TranslationMemoryIndex } from "../core/matcher.js";
 import { writeOutputDocuments } from "../core/output.js";
 import {
   openProjectDb,
@@ -24,6 +24,9 @@ import {
   upsertTranslationMemory,
 } from "../core/repository.js";
 
+/** Default parallel LLM calls during translate. */
+export const DEFAULT_TRANSLATE_CONCURRENCY = 3;
+
 export interface TranslateOptions {
   doc?: string;
   provider?: ProviderName;
@@ -33,6 +36,8 @@ export interface TranslateOptions {
   segmentIds?: string[];
   /** Apply fuzzy TM hits as draft translations (still unapproved). Default: skip to LLM. */
   acceptFuzzy?: boolean;
+  /** Max concurrent LLM segment translations (default 3). */
+  concurrency?: number;
   /** Test seam: inject a provider instead of creating one. */
   providerInstance?: import("../connectors/index.js").TranslationProvider;
 }
@@ -62,13 +67,15 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
       return;
     }
 
-    const tmEntries = getTmEntries(db, lang).map((e) => ({
-      id: e.id,
-      source_text: e.source_text,
-      target_text: e.target_text,
-      lang: e.lang,
-      usage_count: e.usage_count,
-    }));
+    const tmIndex = new TranslationMemoryIndex(
+      getTmEntries(db, lang).map((e) => ({
+        id: e.id,
+        source_text: e.source_text,
+        target_text: e.target_text,
+        lang: e.lang,
+        usage_count: e.usage_count,
+      })),
+    );
 
     const glossary = getGlossary(db, lang).map((g) => ({
       sourceTerm: g.source_term,
@@ -87,15 +94,23 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
     let tmFuzzy = 0;
     let llm = 0;
     const touchedDocs = new Set<string>();
+    const llmQueue: typeof segments = [];
 
     for (const segment of segments) {
       touchedDocs.add(segment.document_path);
-      const match = matchTranslationMemory(segment.source_text, tmEntries);
+      const match = tmIndex.match(segment.source_text);
 
       if (match?.kind === "exact") {
         if (!options.dryRun) {
           upsertTranslation(db, segment.id, lang, match.entry.target_text, "tm-exact");
           upsertTranslationMemory(db, segment.source_text, match.entry.target_text, lang);
+          tmIndex.add({
+            id: match.entry.id,
+            source_text: segment.source_text,
+            target_text: match.entry.target_text,
+            lang,
+            usage_count: 1,
+          });
         }
         tmExact += 1;
         continue;
@@ -104,13 +119,11 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
       if (match?.kind === "fuzzy") {
         if (options.acceptFuzzy) {
           if (!options.dryRun) {
-            // Draft only — requires review; do NOT poison TM with fuzzy-as-exact.
             upsertTranslation(db, segment.id, lang, match.entry.target_text, "tm-fuzzy", false);
           }
           tmFuzzy += 1;
           continue;
         }
-        // Without --accept-fuzzy, fall through to LLM rather than auto-shipping fuzzy text.
       }
 
       if (options.dryRun) {
@@ -118,6 +131,11 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
         continue;
       }
 
+      llmQueue.push(segment);
+    }
+
+    const concurrency = options.concurrency ?? DEFAULT_TRANSLATE_CONCURRENCY;
+    await mapPool(llmQueue, concurrency, async (segment) => {
       const translated = await ensureProvider().translateSegment(
         segment.source_text,
         config.sourceLang,
@@ -126,15 +144,15 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
       );
       upsertTranslation(db, segment.id, lang, translated, "llm");
       upsertTranslationMemory(db, segment.source_text, translated, lang);
-      tmEntries.push({
-        id: `runtime_${tmEntries.length}`,
+      tmIndex.add({
+        id: `runtime_${segment.id}`,
         source_text: segment.source_text,
         target_text: translated,
         lang,
         usage_count: 1,
       });
       llm += 1;
-    }
+    });
 
     let written: string[] = [];
     if (!options.dryRun) {

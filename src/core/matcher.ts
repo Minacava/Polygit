@@ -18,6 +18,52 @@ export interface MatchResult {
 export const DEFAULT_FUZZY_THRESHOLD = 0.85;
 
 /**
+ * In-memory TM index: O(1) exact lookup + length-bucketed fuzzy candidates.
+ */
+export class TranslationMemoryIndex {
+  private readonly exact = new Map<string, TmEntry>();
+  private readonly byLength = new Map<number, Array<{ entry: TmEntry; normalized: string }>>();
+
+  constructor(entries: TmEntry[] = []) {
+    for (const entry of entries) this.add(entry);
+  }
+
+  add(entry: TmEntry): void {
+    const normalized = normalizeText(entry.source_text);
+    if (!normalized) return;
+    if (!this.exact.has(normalized)) this.exact.set(normalized, entry);
+    const bucket = this.byLength.get(normalized.length) ?? [];
+    bucket.push({ entry, normalized });
+    this.byLength.set(normalized.length, bucket);
+  }
+
+  match(sourceText: string, threshold = DEFAULT_FUZZY_THRESHOLD): MatchResult | null {
+    const needle = normalizeText(sourceText);
+    if (!needle) return null;
+
+    const exact = this.exact.get(needle);
+    if (exact) return { entry: exact, score: 1, kind: "exact" };
+
+    const minLen = Math.max(1, Math.floor(needle.length * threshold));
+    const maxLen = Math.ceil(needle.length / threshold);
+    let best: MatchResult | null = null;
+
+    for (let len = minLen; len <= maxLen; len++) {
+      const bucket = this.byLength.get(len);
+      if (!bucket) continue;
+      for (const cand of bucket) {
+        const score = similarity(needle, cand.normalized);
+        if (score < threshold) continue;
+        if (!best || score > best.score) {
+          best = { entry: cand.entry, score, kind: "fuzzy" };
+        }
+      }
+    }
+    return best;
+  }
+}
+
+/**
  * Exact match first, then best fuzzy candidate above the threshold.
  */
 export function matchTranslationMemory(
@@ -25,25 +71,7 @@ export function matchTranslationMemory(
   entries: TmEntry[],
   threshold = DEFAULT_FUZZY_THRESHOLD,
 ): MatchResult | null {
-  const needle = normalizeText(sourceText);
-  if (!needle || entries.length === 0) return null;
-
-  for (const entry of entries) {
-    if (normalizeText(entry.source_text) === needle) {
-      return { entry, score: 1, kind: "exact" };
-    }
-  }
-
-  let best: MatchResult | null = null;
-  for (const entry of entries) {
-    const score = similarity(needle, normalizeText(entry.source_text));
-    if (score < threshold) continue;
-    if (!best || score > best.score) {
-      best = { entry, score, kind: "fuzzy" };
-    }
-  }
-
-  return best;
+  return new TranslationMemoryIndex(entries).match(sourceText, threshold);
 }
 
 /** Normalized Levenshtein similarity in [0, 1]. */
@@ -61,7 +89,6 @@ function levenshtein(a: string, b: string): number {
   if (m === 0) return n;
   if (n === 0) return m;
 
-  // Use two-row DP for memory.
   let prev = new Array<number>(n + 1);
   let curr = new Array<number>(n + 1);
   for (let j = 0; j <= n; j++) prev[j] = j;
@@ -81,4 +108,26 @@ function levenshtein(a: string, b: string): number {
   }
 
   return prev[n] ?? 0;
+}
+
+/** Run async work over items with a fixed concurrency limit. */
+export async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const limit = Math.max(1, Math.min(concurrency, items.length || 1));
+  const results = new Array<R>(items.length);
+  let next = 0;
+
+  async function run(): Promise<void> {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await worker(items[index]!, index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => run()));
+  return results;
 }
