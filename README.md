@@ -30,7 +30,25 @@ polygit --help
 
 ---
 
-## Use case 1 — Translate locally with Ollama (no API key)
+## Use cases
+
+polygit fits anywhere translations should live **next to the source, in Git**, be reviewed by a human, and avoid paying an LLM twice for the same sentence.
+
+| Scenario | Why polygit fits | Setup |
+| --- | --- | --- |
+| **Documentation sites** (VitePress, Docusaurus, plain Markdown) | Presets map your `docs/` tree; translations land where the framework expects them | `init --preset=vitepress` |
+| **App UI strings** (JSON i18n files) | Every string leaf is a segment; keys and structure are preserved | `init --preset=json-i18n` |
+| **Sensitive or internal content** | Run fully local with Ollama — nothing leaves your machine | `models use ollama <tag>` |
+| **Contributing translations upstream** | Clone your fork, translate, approve, open a PR/MR in one flow | `clone` → `publish` |
+| **Consistent product terminology** | Glossary terms are injected into prompts; changing a term marks affected segments stale | `glossary add` / `sync` |
+| **Lower LLM cost on changing content** | Exact translation-memory hits are reused; only new text goes to the LLM | `translate <lang>` |
+| **More languages later** | Status is tracked per language, so adding `es` after `fr` costs nothing extra to set up | `translate es` |
+
+> **Current limits:** Markdown and JSON i18n only. Complex Markdown (tables, lists, front matter) is not yet segmented structurally, so review those files carefully. Always approve output in `review` before publishing.
+
+The walkthroughs below cover the most common flows end to end.
+
+### 1. Private, offline translation with Ollama (no API key)
 
 ```bash
 # 0. Install and start Ollama, then pull a model
@@ -64,9 +82,8 @@ polygit commit --yes
 
 `init` creates `.env.example` and a `.gitignore` that ignores `.env` and `.tm/`. Copy `.env.example` → `.env` only if you later add cloud keys or forge tokens.
 
----
 
-## Use case 2 — Contribute translations via PR / MR
+### 2. Contribute translations to someone else's project (PR / MR)
 
 ```bash
 # 1. Fork the upstream repo on GitHub or GitLab, then clone YOUR fork
@@ -95,9 +112,8 @@ Push uses your normal Git credentials (SSH / HTTPS). Opening the PR/MR uses `GIT
 
 If you cannot push to upstream: work on **your fork**; the PR/MR opens from the fork.
 
----
 
-## Use case 3 — Team workflow (Claude / OpenAI + glossary)
+### 3. Team workflow with consistent terminology (Claude / OpenAI + glossary)
 
 ```bash
 polygit init
