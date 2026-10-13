@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { matchTranslationMemory, similarity } from "../../dist/core/matcher.js";
+import {
+  TranslationMemoryIndex,
+  mapPool,
+  matchTranslationMemory,
+  similarity,
+} from "../../dist/core/matcher.js";
 
 describe("matcher", () => {
   const entries = [
@@ -43,4 +48,41 @@ describe("matcher", () => {
     assert.ok(similarity("abc", "abd") > 0.5);
     assert.equal(similarity("", "abc"), 0);
   });
+
+  it("skips fuzzy candidates outside the length window", () => {
+    const index = new TranslationMemoryIndex([
+      {
+        id: "short",
+        source_text: "Hi",
+        target_text: "Salut",
+        lang: "fr",
+        usage_count: 1,
+      },
+      {
+        id: "long",
+        source_text: "This is a much longer sentence for length filtering",
+        target_text: "Longue",
+        lang: "fr",
+        usage_count: 1,
+      },
+    ]);
+    // Needle length far from "Hi"; should not fuzzy-match the short entry at high threshold.
+    const match = index.match("This is a much longer sentence for length filterin", 0.9);
+    assert.equal(match?.entry.id, "long");
+  });
+
+  it("mapPool respects concurrency and preserves order", async () => {
+    let live = 0;
+    let peak = 0;
+    const out = await mapPool([1, 2, 3, 4, 5], 2, async (n) => {
+      live += 1;
+      peak = Math.max(peak, live);
+      await new Promise((r) => setTimeout(r, 5));
+      live -= 1;
+      return n * 10;
+    });
+    assert.deepEqual(out, [10, 20, 30, 40, 50]);
+    assert.ok(peak <= 2);
+  });
 });
+
