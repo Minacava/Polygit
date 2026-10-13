@@ -5,6 +5,7 @@ import {
   resolveModelSync,
 } from "../connectors/index.js";
 import { pickOllamaModelInteractively } from "./models.js";
+import { assertLangCode } from "../core/lang.js";
 import { matchTranslationMemory } from "../core/matcher.js";
 import { writeOutputDocuments } from "../core/output.js";
 import {
@@ -37,6 +38,7 @@ export interface TranslateOptions {
 }
 
 export async function runTranslate(lang: string, options: TranslateOptions = {}): Promise<void> {
+  assertLangCode(lang);
   const root = requireProjectRoot();
   const config = readConfig(root);
   const providerName: ProviderName = options.provider ?? config.defaultProvider;
