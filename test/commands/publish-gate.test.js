@@ -37,6 +37,8 @@ async function seedApprovedTranslation(root) {
   const seg = db.prepare(`SELECT id FROM segments`).get();
   upsertTranslation(db, seg.id, "fr", "Bonjour.", "llm", true);
   db.close();
+  fs.mkdirSync(path.join(root, "outputs", "fr"), { recursive: true });
+  fs.writeFileSync(path.join(root, "outputs", "fr", "a.md"), "Bonjour.\n", "utf8");
 }
 
 describe("publish gate", () => {
@@ -186,10 +188,33 @@ describe("publish gate", () => {
           }),
         /Push failed|write access/i,
       );
+
+      // Branch must be restored after failure.
+      const branch = (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
+      assert.equal(branch, "master");
     } finally {
       if (prevToken === undefined) delete process.env.GITHUB_TOKEN;
       else process.env.GITHUB_TOKEN = prevToken;
       process.chdir(prev);
     }
   });
+
+  it("rejects publish when on-disk output does not match approved text", async () => {
+    const { root, prev } = await setupProject();
+    try {
+      await seedApprovedTranslation(root);
+      fs.writeFileSync(
+        path.join(root, "outputs", "fr", "a.md"),
+        "TAMPERED\n",
+        "utf8",
+      );
+      await assert.rejects(
+        () => runPublish({ lang: "fr", yes: true }),
+        /does not match approved|Output file/i,
+      );
+    } finally {
+      process.chdir(prev);
+    }
+  });
 });
+
