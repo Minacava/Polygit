@@ -10,8 +10,17 @@ import type {
   TranslationRow,
   TranslationSource,
 } from "./db.js";
+import { similarity } from "./matcher.js";
 import { nowIso } from "./project.js";
-import { createId, createSegmentId, normalizeText, type RawSegment } from "./segmenter.js";
+import {
+  assignStableSegmentIds,
+  createId,
+  normalizeText,
+  type RawSegment,
+} from "./segmenter.js";
+
+/** Minimum similarity to treat a source edit as the same segment (keep translations as stale). */
+const EDIT_MATCH_THRESHOLD = 0.5;
 
 export function upsertDocument(
   db: Database.Database,
@@ -46,65 +55,99 @@ export function upsertDocument(
 }
 
 /**
- * Upsert segments for a document. IDs are stable hashes of path + order + content.
- * Segments that disappear from the source file are removed.
+ * Upsert segments for a document.
+ *
+ * IDs are stable hashes of path + content + occurrence (not position), so
+ * inserting a paragraph keeps translations on unchanged segments. When source
+ * text is edited, we reuse the closest unmatched prior segment id and mark its
+ * translations as `stale` instead of deleting them.
  */
 export function replaceDocumentSegments(
   db: Database.Database,
   document: DocumentRow,
   rawSegments: RawSegment[],
-): { inserted: number; unchanged: number; removed: number } {
+): { inserted: number; unchanged: number; removed: number; updated: number } {
   const existing = db
     .prepare(`SELECT * FROM segments WHERE document_id = ?`)
     .all(document.id) as SegmentRow[];
   const existingById = new Map(existing.map((s) => [s.id, s]));
+  const desired = assignStableSegmentIds(document.path, rawSegments);
 
-  const nextIds = new Set<string>();
   let inserted = 0;
   let unchanged = 0;
+  let updated = 0;
+  let removed = 0;
   const ts = nowIso();
 
   const run = db.transaction(() => {
-    for (const raw of rawSegments) {
-      const id = createSegmentId(document.path, raw.orderIndex, raw.sourceText);
-      nextIds.add(id);
-      const prev = existingById.get(id);
-      if (prev && normalizeText(prev.source_text) === normalizeText(raw.sourceText)) {
+    const keptIds = new Set<string>();
+    const unmatchedNew: typeof desired = [];
+
+    for (const next of desired) {
+      const prev = existingById.get(next.id);
+      if (prev && normalizeText(prev.source_text) === normalizeText(next.sourceText)) {
         db.prepare(`UPDATE segments SET order_index = ?, updated_at = ? WHERE id = ?`).run(
-          raw.orderIndex,
+          next.orderIndex,
           ts,
-          id,
+          next.id,
         );
+        keptIds.add(next.id);
         unchanged += 1;
         continue;
       }
-
-      if (prev) {
-        db.prepare(
-          `UPDATE segments SET order_index = ?, source_text = ?, status = 'pending', updated_at = ? WHERE id = ?`,
-        ).run(raw.orderIndex, raw.sourceText, ts, id);
-        inserted += 1;
-      } else {
-        db.prepare(
-          `INSERT INTO segments (id, document_id, order_index, source_text, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
-        ).run(id, document.id, raw.orderIndex, raw.sourceText, ts, ts);
-        inserted += 1;
-      }
+      unmatchedNew.push(next);
     }
 
-    let removed = 0;
+    const unmatchedOld = existing.filter((s) => !keptIds.has(s.id));
+
+    // Pair source edits: reuse old ids so translations survive as stale.
+    const pairedNew = new Set<string>();
+    const pairedOld = new Set<string>();
+    for (const next of unmatchedNew) {
+      let best: { old: SegmentRow; score: number } | null = null;
+      for (const old of unmatchedOld) {
+        if (pairedOld.has(old.id)) continue;
+        const score = similarity(
+          normalizeText(next.sourceText),
+          normalizeText(old.source_text),
+        );
+        if (score < EDIT_MATCH_THRESHOLD) continue;
+        if (!best || score > best.score) best = { old, score };
+      }
+      if (!best) continue;
+
+      pairedNew.add(next.id);
+      pairedOld.add(best.old.id);
+      keptIds.add(best.old.id);
+
+      db.prepare(
+        `UPDATE segments SET order_index = ?, source_text = ?, status = 'stale', updated_at = ? WHERE id = ?`,
+      ).run(next.orderIndex, next.sourceText, ts, best.old.id);
+      db.prepare(
+        `UPDATE translations SET status = 'stale', approved = 0, updated_at = ? WHERE segment_id = ?`,
+      ).run(ts, best.old.id);
+      updated += 1;
+    }
+
+    for (const next of unmatchedNew) {
+      if (pairedNew.has(next.id)) continue;
+      db.prepare(
+        `INSERT INTO segments (id, document_id, order_index, source_text, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+      ).run(next.id, document.id, next.orderIndex, next.sourceText, ts, ts);
+      keptIds.add(next.id);
+      inserted += 1;
+    }
+
     for (const old of existing) {
-      if (!nextIds.has(old.id)) {
-        db.prepare(`DELETE FROM segments WHERE id = ?`).run(old.id);
-        removed += 1;
-      }
+      if (keptIds.has(old.id)) continue;
+      db.prepare(`DELETE FROM segments WHERE id = ?`).run(old.id);
+      removed += 1;
     }
-    return removed;
   });
 
-  const removed = run();
-  return { inserted, unchanged, removed };
+  run();
+  return { inserted, unchanged, removed, updated };
 }
 
 /**
