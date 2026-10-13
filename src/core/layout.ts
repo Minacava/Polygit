@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { assertLangCode } from "./lang.js";
 import { resolveInsideProject, toPosixRelative } from "./paths.js";
 
 export type OutputMode = "mirror" | "sidecar" | "in-place-locale";
@@ -165,6 +166,7 @@ export function toOutputPath(
   lang: string,
   config: LayoutFields,
 ): string {
+  assertLangCode(lang);
   const root = matchContentRoot(sourceRel, config.contentRoots);
   if (!root) {
     throw new Error(

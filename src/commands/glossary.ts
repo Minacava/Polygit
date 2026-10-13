@@ -1,3 +1,4 @@
+import { assertLangCode } from "../core/lang.js";
 import { openProjectDb, readConfig, requireProjectRoot } from "../core/project.js";
 import {
   markGlossarySegmentsStale,
@@ -16,6 +17,7 @@ export function runGlossaryAdd(
   targetTerm: string,
   options: GlossaryAddOptions,
 ): void {
+  assertLangCode(options.lang);
   const root = requireProjectRoot();
   const db = openProjectDb(root);
   try {
@@ -41,6 +43,7 @@ export interface GlossarySyncOptions {
 }
 
 export async function runGlossarySync(options: GlossarySyncOptions = {}): Promise<void> {
+  if (options.lang !== undefined) assertLangCode(options.lang);
   const root = requireProjectRoot();
   const config = readConfig(root);
   const db = openProjectDb(root);
