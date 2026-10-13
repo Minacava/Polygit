@@ -10,7 +10,7 @@ export interface ResolvedModel {
 }
 
 export const DEFAULT_MODELS: Record<ProviderName, string> = {
-  claude: "claude-3-5-haiku-latest",
+  claude: "claude-haiku-4-5",
   openai: "gpt-4o-mini",
   ollama: "llama3.2",
   huggingface: "meta-llama/Meta-Llama-3-8B-Instruct",
