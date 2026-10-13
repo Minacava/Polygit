@@ -3,7 +3,6 @@ import type { ParsedDocument, Parser } from "./types.js";
 
 interface MarkdownBlock {
   type: "segment" | "raw";
-  /** Present when type === "segment". */
   orderIndex?: number;
   text: string;
 }
@@ -12,9 +11,16 @@ interface MarkdownSkeleton {
   blocks: MarkdownBlock[];
 }
 
+const LIST_ITEM = /^(\s*(?:[-*+]|\d+\.)\s+)(.*)$/;
+const TABLE_ROW = /^\s*\|.*\|\s*$/;
+const TABLE_SEP = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
+
 /**
- * Markdown parser: fenced code and HTML comments stay raw;
- * headings and prose paragraphs become translatable segments.
+ * Markdown parser:
+ * - YAML front matter stays raw
+ * - fenced code stays raw
+ * - list items and table cells become individual segments
+ * - inline code, links, and images are protected while splitting prose
  */
 export const markdownParser: Parser = {
   format: "markdown",
@@ -25,55 +31,79 @@ export const markdownParser: Parser = {
     const segments: RawSegment[] = [];
     let orderIndex = 0;
 
+    const pushRaw = (text: string) => {
+      if (text.length) blocks.push({ type: "raw", text });
+    };
+
+    const pushSegment = (text: string) => {
+      segments.push({ orderIndex, sourceText: text });
+      blocks.push({ type: "segment", orderIndex, text });
+      orderIndex += 1;
+    };
+
     const lines = normalized.split("\n");
+    // A terminating newline makes split() yield a final ""; that is EOF, not a blank line.
+    if (normalized.endsWith("\n") && lines[lines.length - 1] === "") {
+      lines.pop();
+    }
     let i = 0;
+
+    if ((lines[0] ?? "").trim() === "---") {
+      const fm: string[] = [lines[0] ?? ""];
+      i = 1;
+      while (i < lines.length) {
+        fm.push(lines[i] ?? "");
+        if ((lines[i] ?? "").trim() === "---") {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      pushRaw(fm.join("\n") + "\n");
+    }
+
     let proseBuffer: string[] = [];
 
     const flushProse = () => {
       if (proseBuffer.length === 0) return;
-      const chunk = proseBuffer.join("\n").trimEnd();
+      const chunk = proseBuffer.join("\n");
       proseBuffer = [];
+
       if (!chunk.trim()) {
-        blocks.push({ type: "raw", text: chunk + "\n\n" });
+        pushRaw(chunk + "\n");
         return;
       }
 
-      // Headings: one segment for the whole heading line/block.
-      if (/^#{1,6}\s+\S/.test(chunk.trim())) {
-        const text = chunk.trim();
-        segments.push({ orderIndex, sourceText: text });
-        blocks.push({ type: "segment", orderIndex, text });
-        orderIndex += 1;
-        blocks.push({ type: "raw", text: "\n\n" });
-        return;
-      }
+      const trimmed = chunk.trimEnd();
 
-      const parts = segmentProse(chunk);
-      if (parts.length === 0) {
-        blocks.push({ type: "raw", text: chunk + "\n\n" });
-        return;
-      }
-
-      for (let p = 0; p < parts.length; p++) {
-        const part = parts[p]!;
-        const mapped: RawSegment = {
-          orderIndex,
-          sourceText: part.sourceText,
-        };
-        segments.push(mapped);
-        blocks.push({ type: "segment", orderIndex, text: part.sourceText });
-        orderIndex += 1;
-        if (p < parts.length - 1) {
-          blocks.push({ type: "raw", text: " " });
+      if (/^#{1,6}\s+\S/.test(trimmed)) {
+        const m = trimmed.match(/^(#{1,6}\s+)([\s\S]+)$/);
+        if (m) {
+          pushRaw(m[1]!);
+          pushSegment(m[2]!);
+        } else {
+          pushSegment(trimmed);
         }
+        pushRaw("\n");
+        return;
       }
-      blocks.push({ type: "raw", text: "\n\n" });
+
+      const { text: protectedText, tokens } = extractInline(trimmed);
+      const parts = segmentProse(protectedText);
+      if (parts.length === 0) {
+        pushRaw(`${trimmed}\n`);
+        return;
+      }
+      for (let p = 0; p < parts.length; p++) {
+        pushSegment(restoreInline(parts[p]!.sourceText, tokens));
+        if (p < parts.length - 1) pushRaw(" ");
+      }
+      pushRaw("\n");
     };
 
     while (i < lines.length) {
       const line = lines[i] ?? "";
 
-      // Fenced code block
       if (line.trimStart().startsWith("```")) {
         flushProse();
         const fence = [line];
@@ -86,13 +116,59 @@ export const markdownParser: Parser = {
           }
           i += 1;
         }
-        blocks.push({ type: "raw", text: fence.join("\n") + "\n\n" });
+        pushRaw(`${fence.join("\n")}\n`);
         continue;
       }
 
-      // Blank line ends a prose block
+      if (TABLE_ROW.test(line)) {
+        flushProse();
+        while (i < lines.length && TABLE_ROW.test(lines[i] ?? "")) {
+          const row = lines[i]!;
+          i += 1;
+          if (TABLE_SEP.test(row)) {
+            pushRaw(`${row}\n`);
+            continue;
+          }
+          const cells = splitTableCells(row);
+          pushRaw("|");
+          for (const cell of cells) {
+            const leading = cell.match(/^\s*/)?.[0] ?? "";
+            const trailingWs = cell.match(/\s*$/)?.[0] ?? "";
+            const core = cell.slice(leading.length, cell.length - trailingWs.length);
+            pushRaw(leading);
+            if (core) pushSegment(core);
+            pushRaw(`${trailingWs}|`);
+          }
+          pushRaw("\n");
+        }
+        continue;
+      }
+
+      const listMatch = line.match(LIST_ITEM);
+      if (listMatch) {
+        flushProse();
+        pushRaw(listMatch[1]!);
+        const body = listMatch[2] ?? "";
+        if (body.trim()) pushSegment(body);
+        else pushRaw(body);
+        i += 1;
+        while (i < lines.length) {
+          const cont = lines[i] ?? "";
+          if (cont.trim() === "" || LIST_ITEM.test(cont)) break;
+          if (/^\s{2,}\S/.test(cont) || /^\t/.test(cont)) {
+            pushRaw(`\n${cont}`);
+            i += 1;
+            continue;
+          }
+          break;
+        }
+        pushRaw("\n");
+        continue;
+      }
+
       if (line.trim() === "") {
         flushProse();
+        pushRaw("\n");
         i += 1;
         continue;
       }
@@ -102,22 +178,46 @@ export const markdownParser: Parser = {
     }
     flushProse();
 
-    // Trim trailing extra blank separators for cleaner files
-    const skeleton: MarkdownSkeleton = { blocks };
-    return { format: "markdown", segments, skeleton };
+    return { format: "markdown", segments, skeleton: { blocks } satisfies MarkdownSkeleton };
   },
 
   serialize(skeleton: unknown, translations: Map<number, string>): string {
     const { blocks } = skeleton as MarkdownSkeleton;
     let out = "";
     for (const block of blocks) {
-      if (block.type === "raw") {
-        out += block.text;
-      } else {
-        const idx = block.orderIndex ?? -1;
-        out += translations.get(idx) ?? block.text;
-      }
+      if (block.type === "raw") out += block.text;
+      else out += translations.get(block.orderIndex ?? -1) ?? block.text;
     }
-    return out.replace(/\n{3,}/g, "\n\n").replace(/\s+$/u, "\n");
+    if (out.length && !out.endsWith("\n")) out += "\n";
+    return out;
   },
 };
+
+function splitTableCells(row: string): string[] {
+  let s = row.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|")) s = s.slice(0, -1);
+  return s.split("|");
+}
+
+function extractInline(text: string): { text: string; tokens: string[] } {
+  const tokens: string[] = [];
+  const replaced = text
+    .replace(/`[^`\n]+`/g, (m) => {
+      tokens.push(m);
+      return `\uE000${tokens.length - 1}\uE001`;
+    })
+    .replace(/!\[[^\]]*]\([^)]+\)/g, (m) => {
+      tokens.push(m);
+      return `\uE000${tokens.length - 1}\uE001`;
+    })
+    .replace(/\[[^\]]*]\([^)]+\)/g, (m) => {
+      tokens.push(m);
+      return `\uE000${tokens.length - 1}\uE001`;
+    });
+  return { text: replaced, tokens };
+}
+
+function restoreInline(text: string, tokens: string[]): string {
+  return text.replace(/\uE000(\d+)\uE001/g, (_, n) => tokens[Number(n)] ?? "");
+}
