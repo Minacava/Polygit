@@ -18,6 +18,7 @@ export type {
 } from "./core/db.js";
 
 export {
+  assignStableSegmentIds,
   createSegmentId,
   createId,
   normalizeText,

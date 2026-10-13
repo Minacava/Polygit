@@ -103,6 +103,89 @@ describe("repository", () => {
     db.close();
   });
 
+  it("keeps translations when a paragraph is inserted and reimported", () => {
+    const root = tempProject();
+    const db = openDatabase(root);
+    const doc = upsertDocument(db, "sources/hello.md", "markdown");
+
+    replaceDocumentSegments(db, doc, [
+      { orderIndex: 0, sourceText: "Hello world." },
+      { orderIndex: 1, sourceText: "Welcome to polygit." },
+    ]);
+    const before = db
+      .prepare(`SELECT id, source_text FROM segments WHERE document_id = ? ORDER BY order_index`)
+      .all(doc.id);
+    assert.equal(before.length, 2);
+    upsertTranslation(db, before[0].id, "fr", "Bonjour le monde.", "llm", true);
+    upsertTranslation(db, before[1].id, "fr", "Bienvenue sur polygit.", "llm", true);
+
+    // Insert a new paragraph at the top (shifts order_index of prior segments).
+    const result = replaceDocumentSegments(db, doc, [
+      { orderIndex: 0, sourceText: "Brand new intro." },
+      { orderIndex: 1, sourceText: "Hello world." },
+      { orderIndex: 2, sourceText: "Welcome to polygit." },
+    ]);
+    assert.equal(result.unchanged, 2);
+    assert.equal(result.inserted, 1);
+    assert.equal(result.removed, 0);
+
+    const hello = db
+      .prepare(`SELECT id FROM segments WHERE document_id = ? AND source_text = ?`)
+      .get(doc.id, "Hello world.");
+    const welcome = db
+      .prepare(`SELECT id FROM segments WHERE document_id = ? AND source_text = ?`)
+      .get(doc.id, "Welcome to polygit.");
+    assert.equal(hello.id, before[0].id);
+    assert.equal(welcome.id, before[1].id);
+
+    const trHello = db
+      .prepare(`SELECT target_text, status, approved FROM translations WHERE segment_id = ? AND lang = ?`)
+      .get(hello.id, "fr");
+    const trWelcome = db
+      .prepare(`SELECT target_text, status, approved FROM translations WHERE segment_id = ? AND lang = ?`)
+      .get(welcome.id, "fr");
+    assert.equal(trHello.target_text, "Bonjour le monde.");
+    assert.equal(trHello.status, "approved");
+    assert.equal(trHello.approved, 1);
+    assert.equal(trWelcome.target_text, "Bienvenue sur polygit.");
+    assert.equal(trWelcome.status, "approved");
+    assert.equal(countApprovedTranslations(db, "fr"), 2);
+    db.close();
+  });
+
+  it("keeps translations as stale when source text is edited", () => {
+    const root = tempProject();
+    const db = openDatabase(root);
+    const doc = upsertDocument(db, "sources/hello.md", "markdown");
+    replaceDocumentSegments(db, doc, [
+      { orderIndex: 0, sourceText: "Hello world." },
+    ]);
+    const seg = db.prepare(`SELECT id FROM segments WHERE document_id = ?`).get(doc.id);
+    upsertTranslation(db, seg.id, "fr", "Bonjour le monde.", "llm", true);
+
+    const result = replaceDocumentSegments(db, doc, [
+      { orderIndex: 0, sourceText: "Hello brave world." },
+    ]);
+    assert.equal(result.updated, 1);
+    assert.equal(result.removed, 0);
+    assert.equal(result.inserted, 0);
+
+    const row = db
+      .prepare(
+        `SELECT s.id, s.status AS seg_status, t.target_text, t.status AS tr_status, t.approved
+         FROM segments s
+         JOIN translations t ON t.segment_id = s.id AND t.lang = 'fr'
+         WHERE s.document_id = ?`,
+      )
+      .get(doc.id);
+    assert.equal(row.id, seg.id);
+    assert.equal(row.target_text, "Bonjour le monde.");
+    assert.equal(row.seg_status, "stale");
+    assert.equal(row.tr_status, "stale");
+    assert.equal(row.approved, 0);
+    db.close();
+  });
+
   it("lists segments missing a translation for the target lang (multi-lang)", () => {
     const root = tempProject();
     const db = openDatabase(root);

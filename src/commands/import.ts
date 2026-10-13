@@ -34,6 +34,7 @@ export interface ImportFileResult {
   inserted: number;
   unchanged: number;
   removed: number;
+  updated: number;
 }
 
 function importOneFile(
@@ -69,6 +70,7 @@ function importOneFile(
     inserted: result.inserted,
     unchanged: result.unchanged,
     removed: result.removed,
+    updated: result.updated,
   };
 }
 
@@ -116,7 +118,7 @@ export function runImport(
       results.push(result);
       console.log(`Imported ${result.path} as ${result.format}`);
       console.log(
-        `  segments: ${result.segments} (inserted/updated ${result.inserted}, unchanged ${result.unchanged}, removed ${result.removed})`,
+        `  segments: ${result.segments} (inserted ${result.inserted}, updated ${result.updated}, unchanged ${result.unchanged}, removed ${result.removed})`,
       );
     }
     rebuildGlossaryUsage(db);
