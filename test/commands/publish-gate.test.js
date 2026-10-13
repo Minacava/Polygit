@@ -49,6 +49,23 @@ describe("publish gate", () => {
     }
   });
 
+  it("rejects unsafe --branch before contacting remotes", async () => {
+    const { root, prev } = await setupProject();
+    try {
+      await seedApprovedTranslation(root);
+      await assert.rejects(
+        () => runPublish({ lang: "fr", yes: true, branch: "--upload-pack=evil" }),
+        /Invalid branch/i,
+      );
+      await assert.rejects(
+        () => runPublish({ lang: "fr", yes: true, branch: "-u" }),
+        /Invalid branch/i,
+      );
+    } finally {
+      process.chdir(prev);
+    }
+  });
+
   it("blocks when translations are unapproved", async () => {
     const { root, prev } = await setupProject();
     try {

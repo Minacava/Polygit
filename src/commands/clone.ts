@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { runInit } from "./init.js";
-import { cloneRepository } from "../git/git.js";
+import { assertSafeCloneUrl, cloneRepository } from "../git/git.js";
 import { detectForgeFromRemoteUrl } from "../forge/index.js";
 
 export interface CloneOptions {
@@ -13,15 +13,17 @@ export interface CloneOptions {
  * Clone a GitHub or GitLab repository, then optionally run `polygit init`.
  */
 export async function runClone(url: string, options: CloneOptions = {}): Promise<void> {
+  const safeUrl = assertSafeCloneUrl(url);
+
   let forgeLabel = "git";
   try {
-    forgeLabel = detectForgeFromRemoteUrl(url).kind;
+    forgeLabel = detectForgeFromRemoteUrl(safeUrl).kind;
   } catch {
     // Still allow cloning unrecognized remotes; publish will require a known forge.
   }
 
   const fallbackName =
-    url
+    safeUrl
       .replace(/\.git$/i, "")
       .split("/")
       .filter(Boolean)
@@ -34,7 +36,7 @@ export async function runClone(url: string, options: CloneOptions = {}): Promise
 
   console.log(`Cloning ${forgeLabel} repository into ${targetDir}…`);
   try {
-    await cloneRepository(url, targetDir);
+    await cloneRepository(safeUrl, targetDir);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     throw new Error(
@@ -42,7 +44,7 @@ export async function runClone(url: string, options: CloneOptions = {}): Promise
         `(SSH key or HTTPS PAT) with read access.\n${detail}`,
     );
   }
-  console.log(`Cloned ${url}`);
+  console.log(`Cloned ${safeUrl}`);
 
   if (options.init !== false) {
     await runInit(targetDir);
