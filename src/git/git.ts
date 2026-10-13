@@ -101,8 +101,13 @@ export async function getRemoteUrl(
 
 export async function getCurrentBranch(projectRoot: string): Promise<string> {
   const git = simpleGit(projectRoot);
-  const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-  return branch.trim();
+  try {
+    const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+    return branch.trim();
+  } catch {
+    // Empty repo (init without commits) has no HEAD yet.
+    return "HEAD";
+  }
 }
 
 export async function getDefaultRemoteBranch(

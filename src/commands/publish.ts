@@ -1,6 +1,7 @@
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { assertLangCode } from "../core/lang.js";
+import { assertApprovedOutputsOnDisk } from "../core/output.js";
 import {
   openProjectDb,
   readConfig,
@@ -51,6 +52,7 @@ export interface PublishOptions {
 
 /**
  * Local approval → commit → push branch → open GitHub PR or GitLab MR.
+ * Always restores the originally checked-out branch when finished or on failure.
  */
 export async function runPublish(options: PublishOptions = {}): Promise<void> {
   if (!options.lang) {
@@ -68,28 +70,43 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
   }
 
   const root = requireProjectRoot();
+  const originalBranch = await getCurrentBranch(root);
+
+  try {
+    await publishOnce(root, originalBranch, options);
+  } finally {
+    await restoreBranch(root, originalBranch);
+  }
+}
+
+async function publishOnce(
+  root: string,
+  originalBranch: string,
+  options: PublishOptions,
+): Promise<void> {
+  const lang = options.lang!;
 
   // Approval gates first (before remote/forge auth errors).
   const db = openProjectDb(root);
   let unapproved = 0;
   let approved = 0;
   try {
-    unapproved = countUnapprovedTranslations(db, options.lang);
-    approved = countApprovedTranslations(db, options.lang);
+    unapproved = countUnapprovedTranslations(db, lang);
+    approved = countApprovedTranslations(db, lang);
+    if (!options.allowUnapproved && unapproved > 0) {
+      throw new Error(
+        `${unapproved} translated segment(s) are not locally approved yet. ` +
+          `Run "polygit review --lang=${lang}" to approve them, or pass --allow-unapproved.`,
+      );
+    }
+    if (approved === 0 && !options.allowUnapproved) {
+      throw new Error(
+        `No locally approved translations found. Run "polygit review --lang=${lang}" first.`,
+      );
+    }
+    assertApprovedOutputsOnDisk(db, root, lang);
   } finally {
     db.close();
-  }
-
-  if (!options.allowUnapproved && unapproved > 0) {
-    throw new Error(
-      `${unapproved} translated segment(s) are not locally approved yet. ` +
-        `Run "polygit review --lang=${options.lang}" to approve them, or pass --allow-unapproved.`,
-    );
-  }
-  if (approved === 0 && !options.allowUnapproved) {
-    throw new Error(
-      `No locally approved translations found. Run "polygit review --lang=${options.lang}" first.`,
-    );
   }
 
   const remoteUrl = await getRemoteUrl(root);
@@ -107,10 +124,7 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
   const targetBranch = options.targetBranch ?? (await getDefaultRemoteBranch(root));
   const sourceBranch =
     options.branch ??
-    `polygit/translate-${options.lang ?? "all"}-${new Date()
-      .toISOString()
-      .slice(0, 10)
-      .replace(/-/g, "")}`;
+    `polygit/translate-${lang}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
 
   const current = await getCurrentBranch(root);
   if (current !== sourceBranch) {
@@ -131,7 +145,7 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
 
     const message =
       options.title ??
-      `translate: publish ${options.lang ?? "translations"} (${new Date().toISOString().slice(0, 10)})`;
+      `translate: publish ${lang} (${new Date().toISOString().slice(0, 10)})`;
 
     if (!options.yes) {
       if (!process.stdin.isTTY) {
@@ -173,15 +187,14 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
     );
   }
 
-  const title =
-    options.title ?? `translate: ${options.lang ?? "translations"} via polygit`;
+  const title = options.title ?? `translate: ${lang} via polygit`;
   const body =
     options.body ??
     [
       `## Summary`,
       ``,
       `Translation update prepared with polygit.`,
-      options.lang ? `- Language: \`${options.lang}\`` : null,
+      `- Language: \`${lang}\``,
       `- Locally approved segments: ${approved}`,
       ``,
       `## Review`,
@@ -189,9 +202,7 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
       `Please review the translated output files before merging.`,
       ``,
       `_Opened automatically by \`polygit publish\`._`,
-    ]
-      .filter((line) => line !== null)
-      .join("\n");
+    ].join("\n");
 
   let mr;
   try {
@@ -219,6 +230,20 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
   console.log(
     `Remote approval: merge ${label.toLowerCase()} ${ref} on ${repo.kind} to land the translations.`,
   );
+  void originalBranch;
+}
+
+async function restoreBranch(projectRoot: string, originalBranch: string): Promise<void> {
+  if (!originalBranch || originalBranch === "HEAD") return;
+  try {
+    const current = await getCurrentBranch(projectRoot);
+    if (current === originalBranch) return;
+    await checkoutBranch(projectRoot, originalBranch, false);
+    console.log(`Restored branch ${originalBranch}`);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn(`Warning: could not restore branch ${originalBranch}: ${detail}`);
+  }
 }
 
 async function resolvePublishForgeRepo(
