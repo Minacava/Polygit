@@ -1,20 +1,42 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createSegmentId, normalizeText, segmentProse } from "../../dist/core/segmenter.js";
+import {
+  assignStableSegmentIds,
+  createSegmentId,
+  normalizeText,
+  segmentProse,
+} from "../../dist/core/segmenter.js";
 
 describe("segmenter", () => {
-  it("creates stable segment ids for the same inputs", () => {
-    const a = createSegmentId("sources/a.md", 0, "Hello world.");
-    const b = createSegmentId("sources/a.md", 0, "Hello world.");
-    const c = createSegmentId("sources/a.md", 1, "Hello world.");
+  it("creates stable segment ids from content, not position", () => {
+    const a = createSegmentId("sources/a.md", "Hello world.", 0);
+    const b = createSegmentId("sources/a.md", "Hello world.", 0);
+    const moved = createSegmentId("sources/a.md", "Hello world.", 0);
+    const duplicate = createSegmentId("sources/a.md", "Hello world.", 1);
     assert.equal(a, b);
-    assert.notEqual(a, c);
+    assert.equal(a, moved);
+    assert.notEqual(a, duplicate);
+  });
+
+  it("keeps ids when a preceding paragraph is inserted", () => {
+    const before = assignStableSegmentIds("sources/a.md", [
+      { orderIndex: 0, sourceText: "Hello world." },
+      { orderIndex: 1, sourceText: "Welcome." },
+    ]);
+    const after = assignStableSegmentIds("sources/a.md", [
+      { orderIndex: 0, sourceText: "New intro." },
+      { orderIndex: 1, sourceText: "Hello world." },
+      { orderIndex: 2, sourceText: "Welcome." },
+    ]);
+    assert.equal(after[1]?.id, before[0]?.id);
+    assert.equal(after[2]?.id, before[1]?.id);
+    assert.notEqual(after[0]?.id, before[0]?.id);
   });
 
   it("normalizes whitespace before hashing", () => {
     assert.equal(normalizeText("  hi \n"), "hi");
-    const a = createSegmentId("sources/a.md", 0, "Hello  world.");
-    const b = createSegmentId("sources/a.md", 0, "Hello  world.  ");
+    const a = createSegmentId("sources/a.md", "Hello  world.", 0);
+    const b = createSegmentId("sources/a.md", "Hello  world.  ", 0);
     assert.equal(a, b);
   });
 

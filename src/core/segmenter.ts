@@ -11,16 +11,40 @@ export function normalizeText(text: string): string {
 }
 
 /**
- * Stable segment ID from document path, order, and content at first import.
- * Same inputs always produce the same ID.
+ * Stable segment ID from document path, content, and occurrence of that content.
+ *
+ * Order/position is intentionally excluded so inserting a paragraph does not
+ * rewrite IDs (and drop translations) for unchanged segments. Duplicate strings
+ * in the same document are disambiguated with `occurrenceIndex` (0-based among
+ * equal normalized texts in document order).
  */
 export function createSegmentId(
   documentPath: string,
-  orderIndex: number,
   sourceText: string,
+  occurrenceIndex = 0,
 ): string {
-  const payload = `${documentPath}\0${orderIndex}\0${normalizeText(sourceText)}`;
+  const payload = `${documentPath}\0${occurrenceIndex}\0${normalizeText(sourceText)}`;
   return crypto.createHash("sha256").update(payload, "utf8").digest("hex").slice(0, 32);
+}
+
+/**
+ * Assign content-stable IDs to raw segments (document order → occurrence counts).
+ */
+export function assignStableSegmentIds(
+  documentPath: string,
+  rawSegments: RawSegment[],
+): Array<RawSegment & { id: string; occurrenceIndex: number }> {
+  const occurrenceCounts = new Map<string, number>();
+  return rawSegments.map((raw) => {
+    const key = normalizeText(raw.sourceText);
+    const occurrenceIndex = occurrenceCounts.get(key) ?? 0;
+    occurrenceCounts.set(key, occurrenceIndex + 1);
+    return {
+      ...raw,
+      occurrenceIndex,
+      id: createSegmentId(documentPath, raw.sourceText, occurrenceIndex),
+    };
+  });
 }
 
 export function createId(prefix = ""): string {
