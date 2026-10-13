@@ -1,3 +1,4 @@
+import { fetchJson, HttpJsonError } from "../http/fetch-json.js";
 import {
   buildTranslationMessages,
   redactSecrets,
@@ -22,6 +23,7 @@ export interface ChatCompletionsOptions {
   temperature?: number;
   timeoutMs?: number;
   missingKeyMessage?: string;
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -52,9 +54,9 @@ export function createChatCompletionsProvider(
         headers.authorization = `Bearer ${opts.apiKey}`;
       }
 
-      let response: Response;
+      let result;
       try {
-        response = await fetch(opts.endpoint, {
+        result = await fetchJson<ChatCompletionsResponse>(opts.endpoint, {
           method: "POST",
           headers,
           body: JSON.stringify({
@@ -62,22 +64,27 @@ export function createChatCompletionsProvider(
             temperature,
             messages,
           }),
-          signal: AbortSignal.timeout(timeoutMs),
+          timeoutMs,
+          ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
         });
       } catch (err) {
+        if (err instanceof HttpJsonError) {
+          throw new Error(
+            `${opts.label} API error (${err.status}): ${redactSecrets(err.message)}`,
+          );
+        }
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`${opts.label} request failed: ${redactSecrets(msg)}`);
       }
 
-      const body = (await response.json()) as ChatCompletionsResponse;
-      if (!response.ok) {
-        const detail = body.error?.message ?? response.statusText;
+      if (!result.ok) {
+        const detail = result.data.error?.message ?? `HTTP ${result.status}`;
         throw new Error(
-          `${opts.label} API error (${response.status}): ${redactSecrets(detail)}`,
+          `${opts.label} API error (${result.status}): ${redactSecrets(detail)}`,
         );
       }
 
-      const textOut = body.choices?.[0]?.message?.content?.trim();
+      const textOut = result.data.choices?.[0]?.message?.content?.trim();
       if (!textOut) {
         throw new Error(`${opts.label} returned an empty translation.`);
       }
