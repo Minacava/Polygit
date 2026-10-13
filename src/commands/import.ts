@@ -54,7 +54,7 @@ function importOneFile(
   const format = formatOverride ?? inferFormat(relative);
   if (!format) {
     throw new Error(
-      `Could not infer format for ${relative}. Pass --format=markdown or --format=json-i18n.`,
+      `Could not infer format for ${relative}. Pass --format=markdown|json-i18n|po|yaml|xliff.`,
     );
   }
 

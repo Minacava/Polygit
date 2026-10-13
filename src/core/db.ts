@@ -5,7 +5,7 @@ import Database from "better-sqlite3";
 /** Relative path of the on-disk SQLite file inside a polygit project. */
 export const DB_RELATIVE_PATH = path.join(".tm", "db.sqlite");
 
-export type DocumentFormat = "markdown" | "json-i18n";
+export type DocumentFormat = "markdown" | "json-i18n" | "po" | "yaml" | "xliff";
 
 export type SegmentStatus = "pending" | "translated" | "stale" | "approved";
 
@@ -73,7 +73,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS documents (
   id TEXT PRIMARY KEY,
   path TEXT NOT NULL UNIQUE,
-  format TEXT NOT NULL CHECK (format IN ('markdown', 'json-i18n')),
+  format TEXT NOT NULL CHECK (format IN ('markdown', 'json-i18n', 'po', 'yaml', 'xliff')),
   imported_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -151,7 +151,7 @@ export function resolveDbPath(projectRoot: string): string {
  * Creates `.tm/` when missing.
  */
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function ensureSchemaUpgrades(db: Database.Database): void {
   // translations.status (per-language workflow)
@@ -178,6 +178,20 @@ function ensureSchemaUpgrades(db: Database.Database): void {
   if (!row) {
     db.prepare(`INSERT INTO schema_version (version) VALUES (?)`).run(SCHEMA_VERSION);
   } else if (row.version < SCHEMA_VERSION) {
+    // Recreate documents table so format CHECK accepts po/yaml/xliff.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS documents_v3 (
+        id TEXT PRIMARY KEY,
+        path TEXT NOT NULL UNIQUE,
+        format TEXT NOT NULL CHECK (format IN ('markdown', 'json-i18n', 'po', 'yaml', 'xliff')),
+        imported_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT OR IGNORE INTO documents_v3 (id, path, format, imported_at, updated_at)
+        SELECT id, path, format, imported_at, updated_at FROM documents;
+      DROP TABLE documents;
+      ALTER TABLE documents_v3 RENAME TO documents;
+    `);
     db.prepare(`UPDATE schema_version SET version = ?`).run(SCHEMA_VERSION);
   }
 }

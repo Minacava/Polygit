@@ -2,8 +2,10 @@
 import { config as loadDotenv } from "dotenv";
 import { Command } from "commander";
 import path from "node:path";
+import { runCheck } from "./commands/check.js";
 import { runClone } from "./commands/clone.js";
 import { runCommit } from "./commands/commit.js";
+import { runExportTmx } from "./commands/export-tmx.js";
 import { runGlossaryAdd, runGlossarySync } from "./commands/glossary.js";
 import { runImport } from "./commands/import.js";
 import { runInit } from "./commands/init.js";
@@ -12,8 +14,9 @@ import { runReview } from "./commands/review.js";
 import { runStatus } from "./commands/status.js";
 import { runModelsList, runModelsUse } from "./commands/models.js";
 import { runTranslate } from "./commands/translate.js";
-import type { DocumentFormat, SegmentStatus } from "./core/db.js";
+import type { SegmentStatus } from "./core/db.js";
 import { findProjectRoot } from "./core/project.js";
+import { isDocumentFormat } from "./parsers/index.js";
 import { getPackageVersion } from "./version.js";
 import { isProviderName, redactSecrets, type ProviderName } from "./connectors/index.js";
 
@@ -58,17 +61,19 @@ program
   .description("Import a file, glob, or content root into pending segments")
   .argument("[path]", "File or glob under contentRoots (e.g. docs/**/*.md)")
   .option("--root <dir>", "Import all known files under this directory")
-  .option("--format <format>", "markdown | json-i18n")
+  .option("--format <format>", "markdown | json-i18n | po | yaml | xliff")
   .action((file: string | undefined, opts: { format?: string; root?: string }) => {
-    const format = opts.format as DocumentFormat | undefined;
-    if (format && format !== "markdown" && format !== "json-i18n") {
-      throw new Error(`Unsupported format: ${format}`);
+    const format = opts.format;
+    if (format && !isDocumentFormat(format)) {
+      throw new Error(
+        `Unsupported format: ${format}. Use markdown, json-i18n, po, yaml, or xliff.`,
+      );
     }
     if (!file && !opts.root) {
       throw new Error("Provide a file/glob path or --root=<dir>.");
     }
     runImport(file, {
-      ...(format ? { format } : {}),
+      ...(format && isDocumentFormat(format) ? { format } : {}),
       ...(opts.root ? { root: opts.root } : {}),
     });
   });
@@ -253,6 +258,26 @@ program
   .option("--lang <lang>", "Show per-language translation status")
   .action((opts: { lang?: string }) => {
     runStatus(opts.lang ? { lang: opts.lang } : {});
+  });
+
+program
+  .command("check")
+  .description("CI gate: fail if any segment is pending or stale for a language")
+  .requiredOption("--lang <lang>", "Language to check")
+  .action((opts: { lang: string }) => {
+    runCheck({ lang: opts.lang });
+  });
+
+program
+  .command("export-tmx")
+  .description("Export translation memory for a language as TMX 1.4")
+  .requiredOption("--lang <lang>", "Target language code")
+  .option("--out <path>", "Output file (default: tm-<lang>.tmx)")
+  .action((opts: { lang: string; out?: string }) => {
+    runExportTmx({
+      lang: opts.lang,
+      ...(opts.out ? { out: opts.out } : {}),
+    });
   });
 
 async function main(): Promise<void> {
