@@ -279,7 +279,7 @@ polygit does **not** log you into GitHub/GitLab. It reuses Git + a forge token.
 | Local work | No forge account |
 | `publish` | Git push access **and** `GITHUB_TOKEN` or `GITLAB_TOKEN` |
 
-Non-`github.com` remotes that look like GitLab (`gitlab.*`) are treated as **GitLab**. GitHub Enterprise hosts (`github.*`) are treated as **GitHub**. Unknown hosts require `--forge=github|gitlab`.
+Only **github.com** and **gitlab.com** are trusted automatically for forge API tokens. Enterprise or self-hosted remotes require `--forge=github|gitlab` and either `--confirm-forge-host` or a `forgeHosts` entry in `.tmconfig.json`. API calls always use HTTPS.
 
 ---
 

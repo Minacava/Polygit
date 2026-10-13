@@ -169,18 +169,27 @@ program
     "After local review: commit, push a branch, and open a GitHub PR or GitLab MR",
   )
   .requiredOption("--lang <lang>", "Language being published")
-  .option("--forge <kind>", "github | gitlab (override host detection)")
+  .option(
+    "--forge <kind>",
+    "github | gitlab (required for Enterprise/self-hosted hosts)",
+  )
+  .option(
+    "--confirm-forge-host",
+    "Allow sending forge tokens to a non-github.com / non-gitlab.com host",
+    false,
+  )
   .option("--branch <name>", "Source branch name to push")
   .option("--target-branch <name>", "Base branch for the PR/MR (default: remote HEAD)")
   .option("--title <title>", "PR/MR title")
   .option("--body <body>", "PR/MR description")
   .option("--draft", "Open as draft", false)
-  .option("--yes", "Skip confirmation", false)
+  .option("--yes", "Skip commit confirmation", false)
   .option("--allow-unapproved", "Skip the local-approval gate (not recommended)", false)
   .action(
     async (opts: {
       lang?: string;
       forge?: string;
+      confirmForgeHost?: boolean;
       branch?: string;
       targetBranch?: string;
       title?: string;
@@ -197,6 +206,7 @@ program
         ...(opts.forge === "github" || opts.forge === "gitlab"
           ? { forge: opts.forge }
           : {}),
+        confirmForgeHost: Boolean(opts.confirmForgeHost),
         ...(opts.branch ? { branch: opts.branch } : {}),
         ...(opts.targetBranch ? { targetBranch: opts.targetBranch } : {}),
         ...(opts.title ? { title: opts.title } : {}),

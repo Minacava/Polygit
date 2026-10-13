@@ -25,7 +25,7 @@ export function createGitLabClient(
       repo: ForgeRepoRef,
       input: CreateMergeRequestInput,
     ): Promise<CreateMergeRequestResult> {
-      const apiBase = `https://${repo.host}/api/v4`;
+      const apiBase = gitlabApiBase(repo.host);
       const projectId = encodeURIComponent(repo.fullPath);
 
       const response = await fetchImpl(`${apiBase}/projects/${projectId}/merge_requests`, {
@@ -66,4 +66,22 @@ export function createGitLabClient(
       return { url: body.web_url, number: body.iid };
     },
   };
+}
+
+function gitlabApiBase(host: string): string {
+  assertSafeForgeApiHost(host);
+  return `https://${host}/api/v4`;
+}
+
+function assertSafeForgeApiHost(host: string): void {
+  if (
+    !host ||
+    host.includes("://") ||
+    host.includes("/") ||
+    host.includes("@") ||
+    host.includes("\\") ||
+    host.includes(" ")
+  ) {
+    throw new Error(`Invalid forge API host: ${host}`);
+  }
 }
