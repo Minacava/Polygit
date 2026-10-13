@@ -11,6 +11,7 @@ import {
   countUnapprovedTranslations,
 } from "../core/repository.js";
 import {
+  assertSafeGitBranch,
   checkoutBranch,
   commitSourcesAndOutputs,
   getCurrentBranch,
@@ -59,6 +60,12 @@ export async function runPublish(options: PublishOptions = {}): Promise<void> {
   }
 
   assertLangCode(options.lang);
+  if (options.branch !== undefined) {
+    assertSafeGitBranch(options.branch, "branch");
+  }
+  if (options.targetBranch !== undefined) {
+    assertSafeGitBranch(options.targetBranch, "target-branch");
+  }
 
   const root = requireProjectRoot();
 

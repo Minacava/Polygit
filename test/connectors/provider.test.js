@@ -29,12 +29,27 @@ describe("provider helpers", () => {
   });
 
   it("redacts API keys from error strings", () => {
-    const redacted = redactSecrets(
-      "failed with sk-ant-abcdefghijklmnopqrstuvwxyz and Bearer tok_1234567890 and glpat-abcdefghij1234567890",
-    );
-    assert.doesNotMatch(redacted, /sk-ant-abcdefgh/);
-    assert.match(redacted, /sk-\*\*\*/);
-    assert.match(redacted, /Bearer \*\*\*/);
-    assert.match(redacted, /glpat-\*\*\*/);
+    const samples = [
+      ["sk-ant-abcdefghijklmnopqrstuvwxyz", /sk-ant-\*\*\*/, /sk-ant-abcdefgh/],
+      ["sk-proj-abcdefghijklmnopqrstuvwxyz", /sk-proj-\*\*\*/, /sk-proj-abcdefgh/],
+      ["sk-abcdefghijklmnopqrstuvwxyz0123", /sk-\*\*\*/, /sk-abcdefgh/],
+      ["gsk_abcdefghijklmnopqrstuvwxyz0123", /gsk_\*\*\*/, /gsk_abcdefgh/],
+      ["AIzaSyA-abcdefghijklmnopqrstuvwx", /AIza\*\*\*/, /AIzaSyA-abcdefgh/],
+      ["glpat-abcdefghij1234567890", /glpat-\*\*\*/, /glpat-abcdefgh/],
+      ["ghp_abcdefghijklmnopqrstuvwxyz0123456789", /gh\*_\*\*\*/, /ghp_abcdefgh/],
+      ["github_pat_abcdefghijklmnopqrstuvwxyz0123456789", /github_pat_\*\*\*/, /github_pat_abcdefgh/],
+      ["hf_abcdefghijklmnopqrstuvwxyz0123456789", /hf_\*\*\*/, /hf_abcdefgh/],
+      ["npm_abcdefghijklmnopqrstuvwxyz0123456789", /npm_\*\*\*/, /npm_abcdefgh/],
+      ["xoxb-1234567890-abcdefghij", /xox\*-\*\*\*/, /xoxb-1234567890-abcdefgh/],
+      ["AKIAIOSFODNN7EXAMPLE", /AKIA\*\*\*/, /AKIAIOSFODNN7EXAMPLE/],
+      ["ya29.a0AfH6SMB-example-token-value", /ya29\.\*\*\*/, /ya29\.a0AfH6SMB/],
+      ["Bearer tok_1234567890abcdef", /Bearer \*\*\*/, /tok_1234567890/],
+    ];
+
+    for (const [secret, kept, leaked] of samples) {
+      const redacted = redactSecrets(`failed with ${secret}`);
+      assert.match(redacted, kept, `expected redaction marker for ${secret}`);
+      assert.doesNotMatch(redacted, leaked, `secret leaked for ${secret}: ${redacted}`);
+    }
   });
 });

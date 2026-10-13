@@ -6,6 +6,9 @@ import {
   pathMatchesPrefixes,
 } from "../core/layout.js";
 import { readConfig } from "../core/project.js";
+import { assertSafeCloneUrl, assertSafeGitBranch } from "./validate.js";
+
+export { assertSafeCloneUrl, assertSafeGitBranch, isValidGitBranchName } from "./validate.js";
 
 export async function ensureGitRepo(projectRoot: string): Promise<boolean> {
   const gitDir = path.join(projectRoot, ".git");
@@ -125,11 +128,12 @@ export async function checkoutBranch(
   branch: string,
   create = false,
 ): Promise<void> {
+  const safeBranch = assertSafeGitBranch(branch);
   const git = simpleGit(projectRoot);
   if (create) {
-    await git.checkoutLocalBranch(branch);
+    await git.checkoutLocalBranch(safeBranch);
   } else {
-    await git.checkout(branch);
+    await git.checkout(safeBranch);
   }
 }
 
@@ -139,11 +143,12 @@ export async function pushBranch(
   remote = "origin",
   setUpstream = true,
 ): Promise<void> {
+  const safeBranch = assertSafeGitBranch(branch);
   const git = simpleGit(projectRoot);
   if (setUpstream) {
-    await git.push(remote, branch, ["--set-upstream"]);
+    await git.push(remote, safeBranch, ["--set-upstream"]);
   } else {
-    await git.push(remote, branch);
+    await git.push(remote, safeBranch);
   }
 }
 
@@ -167,6 +172,7 @@ export async function cloneRepository(
   url: string,
   targetDir: string,
 ): Promise<void> {
+  const safeUrl = assertSafeCloneUrl(url);
   const git = simpleGit();
-  await git.clone(url, targetDir);
+  await git.clone(safeUrl, targetDir);
 }
