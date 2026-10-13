@@ -164,6 +164,8 @@ Segments already translated for `fr` are translated again for `es` when `es` has
 | `commit` | Commit configured content roots (+ mirror `outputRoot`) |
 | `publish --lang=<lang>` | After approval: commit → push branch → GitHub PR or GitLab MR |
 | `status [--lang=<lang>]` | Layout roots, on-disk counts, and per-document status |
+| `check --lang=<lang>` | CI gate: exit non-zero if any segment is pending or stale |
+| `export-tmx --lang=<lang>` | Export translation memory as TMX 1.4 (`--out` optional) |
 
 ### Useful flags
 
@@ -171,11 +173,15 @@ Segments already translated for `fr` are translated again for `es` when `es` has
 polygit init --preset=vitepress
 polygit import docs/**/*.md
 polygit import --root=docs --format=markdown
+polygit import sources/messages.po
+polygit import locales/en.yml --format=yaml
 polygit translate fr --provider=ollama --model=mistral --dry-run
 polygit translate fr --accept-fuzzy
 polygit translate fr --doc=sources/intro.md
 polygit review --lang=fr --status=translated
 polygit status --lang=fr
+polygit check --lang=fr
+polygit export-tmx --lang=fr --out=tm-fr.tmx
 polygit publish --lang=fr --draft --yes
 polygit publish --lang=fr --forge=gitlab --yes
 polygit publish --lang=fr --allow-unapproved   # skip local approval (not recommended)
@@ -285,10 +291,13 @@ Only **github.com** and **gitlab.com** are trusted automatically for forge API t
 
 ## Supported formats
 
-| Format | Flag |
+| Format | Flag / extensions |
 | --- | --- |
-| Markdown | `--format=markdown` |
-| JSON i18n (leaf strings) | `--format=json-i18n` |
+| Markdown | `--format=markdown` (`.md`, `.markdown`) |
+| JSON i18n (leaf strings) | `--format=json-i18n` (`.json`) |
+| Gettext PO | `--format=po` (`.po`, `.pot`) |
+| YAML i18n (`key: value`) | `--format=yaml` (`.yaml`, `.yml`) |
+| XLIFF 1.2 | `--format=xliff` (`.xliff`, `.xlf`) |
 
 ---
 
