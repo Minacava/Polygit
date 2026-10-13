@@ -3,9 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
+import { simpleGit } from "simple-git";
 import { runInit } from "../../dist/commands/init.js";
 import { runPublish } from "../../dist/commands/publish.js";
 import { openDatabase } from "../../dist/core/db.js";
+import {
+  DEFAULT_CONFIG,
+  writeConfig,
+} from "../../dist/core/project.js";
 import {
   markGlossarySegmentsStale,
   rebuildGlossaryUsage,
@@ -21,6 +26,17 @@ async function setupProject() {
   process.chdir(root);
   await runInit();
   return { root, prev };
+}
+
+async function seedApprovedTranslation(root) {
+  const db = openDatabase(root);
+  fs.mkdirSync(path.join(root, "sources"), { recursive: true });
+  fs.writeFileSync(path.join(root, "sources", "a.md"), "Hello.\n", "utf8");
+  const doc = upsertDocument(db, "sources/a.md", "markdown");
+  replaceDocumentSegments(db, doc, [{ orderIndex: 0, sourceText: "Hello." }]);
+  const seg = db.prepare(`SELECT id FROM segments`).get();
+  upsertTranslation(db, seg.id, "fr", "Bonjour.", "llm", true);
+  db.close();
 }
 
 describe("publish gate", () => {
@@ -74,6 +90,88 @@ describe("publish gate", () => {
         /not locally approved|No locally approved/i,
       );
     } finally {
+      process.chdir(prev);
+    }
+  });
+
+  it("refuses github.attacker.com without --forge / confirmation", async () => {
+    const { root, prev } = await setupProject();
+    const prevToken = process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN = "should-not-be-sent";
+    try {
+      await seedApprovedTranslation(root);
+      await simpleGit(root).addRemote(
+        "origin",
+        "https://github.attacker.com/acme/docs.git",
+      );
+
+      await assert.rejects(
+        () => runPublish({ lang: "fr", yes: true }),
+        /untrusted|Cannot detect forge|github\.com and gitlab\.com/i,
+      );
+    } finally {
+      if (prevToken === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = prevToken;
+      process.chdir(prev);
+    }
+  });
+
+  it("refuses gitlab.evil.io even with --forge when unconfirmed", async () => {
+    const { root, prev } = await setupProject();
+    const prevToken = process.env.GITLAB_TOKEN;
+    process.env.GITLAB_TOKEN = "should-not-be-sent";
+    try {
+      await seedApprovedTranslation(root);
+      await simpleGit(root).addRemote(
+        "origin",
+        "https://gitlab.evil.io/team/app.git",
+      );
+
+      await assert.rejects(
+        () => runPublish({ lang: "fr", yes: true, forge: "gitlab" }),
+        /untrusted host|confirm-forge-host|forgeHosts/i,
+      );
+    } finally {
+      if (prevToken === undefined) delete process.env.GITLAB_TOKEN;
+      else process.env.GITLAB_TOKEN = prevToken;
+      process.chdir(prev);
+    }
+  });
+
+  it("allows Enterprise host when listed in forgeHosts with --forge", async () => {
+    const { root, prev } = await setupProject();
+    const prevToken = process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN = "test-token-not-for-network";
+    try {
+      const git = simpleGit(root);
+      await git.addConfig("user.email", "test@example.com");
+      await git.addConfig("user.name", "Test");
+      fs.writeFileSync(path.join(root, "README.md"), "# test\n", "utf8");
+      await git.add("README.md");
+      await git.commit("init");
+
+      await seedApprovedTranslation(root);
+      writeConfig(root, {
+        ...DEFAULT_CONFIG,
+        forgeHosts: ["github.mycompany.com"],
+      });
+      await git.addRemote("origin", "https://github.mycompany.com/acme/docs.git");
+
+      // Host is confirmed via forgeHosts; publish proceeds past forge resolution
+      // and fails later on push (no real remote) — not on trust checks.
+      await assert.rejects(
+        () =>
+          runPublish({
+            lang: "fr",
+            yes: true,
+            forge: "github",
+            branch: "polygit/test-forge-host",
+          }),
+        /Push failed|write access/i,
+      );
+    } finally {
+      if (prevToken === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = prevToken;
       process.chdir(prev);
     }
   });

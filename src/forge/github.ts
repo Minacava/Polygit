@@ -25,10 +25,7 @@ export function createGitHubClient(
       repo: ForgeRepoRef,
       input: CreateMergeRequestInput,
     ): Promise<CreateMergeRequestResult> {
-      const apiBase =
-        repo.host === "api.github.com"
-          ? "https://api.github.com"
-          : `https://${repo.host}/api/v3`;
+      const apiBase = githubApiBase(repo.host);
 
       const response = await fetchImpl(
         `${apiBase}/repos/${repo.owner}/${repo.name}/pulls`,
@@ -75,4 +72,23 @@ export function createGitHubClient(
       return { url: body.html_url, number: body.number };
     },
   };
+}
+
+function githubApiBase(host: string): string {
+  assertSafeForgeApiHost(host);
+  if (host === "api.github.com") return "https://api.github.com";
+  return `https://${host}/api/v3`;
+}
+
+function assertSafeForgeApiHost(host: string): void {
+  if (
+    !host ||
+    host.includes("://") ||
+    host.includes("/") ||
+    host.includes("@") ||
+    host.includes("\\") ||
+    host.includes(" ")
+  ) {
+    throw new Error(`Invalid forge API host: ${host}`);
+  }
 }

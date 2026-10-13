@@ -15,7 +15,16 @@ export function createForgeClient(kind: ForgeKind): ForgeClient {
   }
 }
 
-export { detectForgeFromRemoteUrl } from "./detect.js";
+export {
+  TRUSTED_FORGE_HOSTS,
+  detectForgeFromRemoteUrl,
+  isAllowedForgeHost,
+  isTrustedForgeHost,
+  normalizeForgeHostname,
+  peekRemoteHostname,
+  trustedForgeKindForHost,
+} from "./detect.js";
+export type { DetectForgeOptions } from "./detect.js";
 export { createGitHubClient } from "./github.js";
 export { createGitLabClient } from "./gitlab.js";
 export type {

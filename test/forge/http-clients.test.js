@@ -95,4 +95,31 @@ describe("forge HTTP clients", () => {
     assert.equal(body.source_branch, "polygit/translate-es");
     assert.equal(body.target_branch, "main");
   });
+
+  it("rejects unsafe API hosts before sending tokens", async () => {
+    const fetchImpl = async () => {
+      throw new Error("fetch should not be called");
+    };
+    const gh = createGitHubClient("gh-test-token", fetchImpl);
+    await assert.rejects(
+      () =>
+        gh.createMergeRequest(
+          {
+            kind: "github",
+            host: "https://evil.example",
+            owner: "acme",
+            name: "docs",
+            fullPath: "acme/docs",
+            webBase: "https://evil.example",
+          },
+          {
+            sourceBranch: "a",
+            targetBranch: "main",
+            title: "t",
+            body: "b",
+          },
+        ),
+      /Invalid forge API host/i,
+    );
+  });
 });
