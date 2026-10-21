@@ -9,6 +9,7 @@ import { runImport } from "../../dist/commands/import.js";
 import { runInit } from "../../dist/commands/init.js";
 import { openProjectDb } from "../../dist/core/project.js";
 import { upsertTranslation, upsertTranslationMemory } from "../../dist/core/repository.js";
+import { hasIllegalXmlChars } from "../../dist/core/xml.js";
 
 describe("check and export-tmx", () => {
   it("check fails while pending, passes after translation", async () => {
@@ -60,6 +61,31 @@ describe("check and export-tmx", () => {
       assert.match(xml, /xml:lang="en"><seg>Hello<\/seg>/);
       assert.match(xml, /xml:lang="es"><seg>Hola<\/seg>/);
       assert.match(xml, /<seg>Adiós<\/seg>/);
+    } finally {
+      process.chdir(prev);
+    }
+  });
+
+  it("export-tmx strips illegal XML 1.0 characters from segments", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-tmx-ctrl-"));
+    const prev = process.cwd();
+    process.chdir(root);
+    try {
+      await runInit();
+      const db = openProjectDb(root);
+      try {
+        upsertTranslationMemory(db, "Hello\u0000world", "Hola\u0001mundo", "es");
+      } finally {
+        db.close();
+      }
+
+      const { outPath } = runExportTmx({ lang: "es", out: "out/tm-es.tmx" });
+      const xml = fs.readFileSync(outPath, "utf8");
+      assert.equal(hasIllegalXmlChars(xml), false);
+      assert.equal(xml.includes("\u0000"), false);
+      assert.equal(xml.includes("\u0001"), false);
+      assert.match(xml, /<seg>Helloworld<\/seg>/);
+      assert.match(xml, /<seg>Holamundo<\/seg>/);
     } finally {
       process.chdir(prev);
     }
