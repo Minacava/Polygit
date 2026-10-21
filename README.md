@@ -76,11 +76,13 @@ mkdir -p sources && cp /path/to/intro.md sources/intro.md
 
 npx polygit import sources/intro.md --format=markdown
 npx polygit models use ollama llama3.2
-npx polygit translate fr          # TTY: progress bar for LLM segments
-npx polygit review --lang=fr
-npx polygit commit --message "translate(fr): add intro" --yes
+npx polygit translate fr          # on main → creates polygit/translate-fr-YYYYMMDD
+npx polygit review --lang=fr      # approve; then hints to publish
+npx polygit publish --lang=fr --yes   # push branch + open PR to main
 npx polygit log --stat
 ```
+
+`translate` / `review` auto-create a **`polygit/translate-<lang>-YYYYMMDD`** branch when you are on `main`/`master`, so translation work stays off the default branch. When everything is approved, `publish` pushes that branch and opens a **PR/MR into main**. Use `--no-branch` to stay on `main` if you really want to.
 
 `init` creates `.tmconfig.json`, `sources/`, `outputs/`, `.tm/`, `.gitignore`, and `.env.example`. Copy `.env.example` → `.env` only if you add cloud keys or forge tokens.
 
@@ -208,6 +210,7 @@ polygit translate fr --accept-fuzzy
 | `--model <id>` | One-off model override |
 | `--dry-run` | Plan only — no writes, no LLM calls |
 | `--accept-fuzzy` | Apply fuzzy TM as unapproved drafts (skip LLM) |
+| `--no-branch` | Do not auto-create/checkout `polygit/translate-<lang>-…` when on main/master |
 
 ### `models`
 
@@ -265,6 +268,9 @@ polygit review --lang=fr --status=stale
 | --- | --- |
 | `--lang <lang>` | Language to review (**required**) |
 | `--status <s>` | Filter: `pending` \| `translated` \| `stale` \| `approved` |
+| `--no-branch` | Do not auto-create/checkout `polygit/translate-<lang>-…` when on main/master |
+
+When no unapproved segments remain, review prints a reminder to run `polygit publish --lang=<lang> --yes` (opens a PR to main).
 
 ### `commit`
 
@@ -313,7 +319,9 @@ polygit log --grep-translate
 
 ### `publish`
 
-After local approval: commit → push a branch → open a GitHub PR or GitLab MR.
+After local approval: commit (if needed) → push the translation branch → open a **GitHub PR or GitLab MR into main** (or `--target-branch`).
+
+If you already ran `translate`/`review` on `polygit/translate-<lang>-…`, publish reuses that branch instead of creating a second one.
 
 ```bash
 polygit publish --lang=fr --yes
