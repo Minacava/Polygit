@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import type { DocumentFormat } from "../core/db.js";
+import { sha256Text } from "../core/hash.js";
 import {
   assertInContentRoots,
   expandImportTargets,
@@ -59,8 +60,9 @@ function importOneFile(
   }
 
   const content = fs.readFileSync(abs, "utf8");
+  const contentHash = sha256Text(content);
   const parsed = getParser(format).parse(content);
-  const document = upsertDocument(db, relative, format);
+  const document = upsertDocument(db, relative, format, contentHash);
   const result = replaceDocumentSegments(db, document, parsed.segments);
 
   return {

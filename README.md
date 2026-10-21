@@ -36,7 +36,7 @@ Machine translation of docs usually ends up one of two ways. Either you paste te
 - **5 formats** — Markdown, JSON i18n, Gettext PO, YAML i18n, XLIFF 1.2.
 - **Framework presets** — `--preset=vitepress`, `docusaurus`, `json-i18n`.
 - **Git workflow** — interactive terminal review, scoped `commit` (never stages `.tm/` or `.env`), optional LLM-drafted commit message (`commit --ai`), and `publish` to open a GitHub PR or GitLab MR.
-- **CI gate** — `polygit check --lang=fr` exits non-zero while any segment is pending or stale.
+- **CI gate** — `polygit check` fails on unimported or changed sources, pending/stale segments, or missing output files (`--lang` optional; `--json` for CI).
 - **Portable memory** — `export-tmx` writes your translation memory as TMX 1.4.
 
 ## Quick start
@@ -122,8 +122,9 @@ polygit import locales/en.yml --format=yaml
 # Review only stale segments
 polygit review --lang=fr --status=stale
 
-# Gate a CI job on complete translations
+# Gate a CI job on complete translations (and source drift)
 polygit check --lang=fr
+polygit check --json
 
 # Commit with an LLM-drafted message, open a draft PR
 polygit commit --ai --yes
@@ -150,7 +151,7 @@ In `review`, each segment shows SOURCE and TARGET. Prompt: `Action [a/A/e/s/q] >
 | `log` | Show recent translation commits |
 | `publish` | Push and open a GitHub PR / GitLab MR |
 | `status` | Per-document / per-language counts |
-| `check` | CI gate: fail on pending or stale segments |
+| `check` | CI gate: NEW/CHANGED sources, pending/stale, missing outputs |
 | `export-tmx` | Export the TM as TMX 1.4 |
 
 Full flags and examples for every command: **[COMMANDS.md](COMMANDS.md)**.

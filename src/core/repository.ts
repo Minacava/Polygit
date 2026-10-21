@@ -26,19 +26,23 @@ export function upsertDocument(
   db: Database.Database,
   relativePath: string,
   format: DocumentFormat,
+  contentHash?: string | null,
 ): DocumentRow {
   const existing = db
     .prepare(`SELECT * FROM documents WHERE path = ?`)
     .get(relativePath) as DocumentRow | undefined;
 
   const ts = nowIso();
+  const hash =
+    contentHash === undefined
+      ? (existing?.content_hash ?? null)
+      : contentHash;
+
   if (existing) {
-    db.prepare(`UPDATE documents SET format = ?, updated_at = ? WHERE id = ?`).run(
-      format,
-      ts,
-      existing.id,
-    );
-    return { ...existing, format, updated_at: ts };
+    db.prepare(
+      `UPDATE documents SET format = ?, updated_at = ?, content_hash = ? WHERE id = ?`,
+    ).run(format, ts, hash, existing.id);
+    return { ...existing, format, updated_at: ts, content_hash: hash };
   }
 
   const row: DocumentRow = {
@@ -47,10 +51,12 @@ export function upsertDocument(
     format,
     imported_at: ts,
     updated_at: ts,
+    content_hash: hash,
   };
   db.prepare(
-    `INSERT INTO documents (id, path, format, imported_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-  ).run(row.id, row.path, row.format, row.imported_at, row.updated_at);
+    `INSERT INTO documents (id, path, format, imported_at, updated_at, content_hash)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(row.id, row.path, row.format, row.imported_at, row.updated_at, row.content_hash);
   return row;
 }
 
