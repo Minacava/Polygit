@@ -8,6 +8,7 @@ import { runCommit } from "./commands/commit.js";
 import { runConfigGet, runConfigSet } from "./commands/config.js";
 import { runExportTmx } from "./commands/export-tmx.js";
 import { runGlossaryAdd, runGlossarySync } from "./commands/glossary.js";
+import { runHooksInstall } from "./commands/hooks.js";
 import { runImport } from "./commands/import.js";
 import { runInit } from "./commands/init.js";
 import { runLog } from "./commands/log.js";
@@ -15,6 +16,7 @@ import { runPublish } from "./commands/publish.js";
 import { runReview } from "./commands/review.js";
 import { runStatus } from "./commands/status.js";
 import { runModelsList, runModelsUse } from "./commands/models.js";
+import { runSync } from "./commands/sync.js";
 import { runTranslate } from "./commands/translate.js";
 import type { SegmentStatus } from "./core/db.js";
 import { findProjectRoot } from "./core/project.js";
@@ -356,6 +358,40 @@ program
   });
 
 program
+  .command("sync")
+  .description(
+    "Import NEW/CHANGED sources and translate them (always left unapproved)",
+  )
+  .option("--lang <lang>", "Target language (default: all targetLangs)")
+  .option("--provider <name>", "claude | openai | ollama | huggingface")
+  .option("--model <id>", "Model id/tag for the selected provider")
+  .option("--dry-run", "Show plan without importing or translating", false)
+  .action(
+    async (opts: {
+      lang?: string;
+      provider?: string;
+      model?: string;
+      dryRun?: boolean;
+    }) => {
+      let provider: ProviderName | undefined;
+      if (opts.provider !== undefined) {
+        if (!isProviderName(opts.provider)) {
+          throw new Error(
+            `Unsupported provider: ${opts.provider}. Use claude, openai, ollama, or huggingface.`,
+          );
+        }
+        provider = opts.provider;
+      }
+      await runSync({
+        ...(opts.lang ? { lang: opts.lang } : {}),
+        ...(provider !== undefined ? { provider } : {}),
+        ...(opts.model ? { model: opts.model } : {}),
+        dryRun: Boolean(opts.dryRun),
+      });
+    },
+  );
+
+program
   .command("check")
   .description(
     "CI gate: fail on NEW/CHANGED sources, pending/stale segments, or missing outputs",
@@ -367,6 +403,15 @@ program
       ...(opts.lang ? { lang: opts.lang } : {}),
       json: Boolean(opts.json),
     });
+  });
+
+const hooks = program.command("hooks").description("Opt-in Git hooks for polygit");
+
+hooks
+  .command("install")
+  .description("Install a pre-commit hook that runs polygit check (never overwrites)")
+  .action(() => {
+    runHooksInstall();
   });
 
 program
