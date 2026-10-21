@@ -3,7 +3,9 @@ import { afterEach, describe, it } from "node:test";
 import {
   formatOllamaModelSize,
   getOllamaHost,
+  isOllamaModelInstalled,
   listOllamaModels,
+  ollamaModelMatches,
 } from "../../dist/connectors/ollama-models.js";
 
 const originalFetch = globalThis.fetch;
@@ -61,5 +63,21 @@ describe("ollama-models", () => {
     assert.match(formatOllamaModelSize(2 * 1024 ** 3), /2\.0 GB/);
     assert.match(formatOllamaModelSize(512 * 1024 ** 2), /512 MB/);
     assert.equal(formatOllamaModelSize(undefined), "");
+  });
+
+  it("matches untagged requests to tagged installs", () => {
+    assert.equal(ollamaModelMatches("llama3.2", "llama3.2:latest"), true);
+    assert.equal(ollamaModelMatches("llama3.2:latest", "llama3.2:latest"), true);
+    assert.equal(ollamaModelMatches("llama3.2:latest", "llama3.2"), true);
+    assert.equal(ollamaModelMatches("llama3.2", "llama3.1:latest"), false);
+    assert.equal(ollamaModelMatches("gemma4", "gemma4:26b"), true);
+    assert.equal(
+      isOllamaModelInstalled("llama3.2", [{ name: "llama3.2:latest" }]),
+      true,
+    );
+    assert.equal(
+      isOllamaModelInstalled("mistral", [{ name: "llama3.2:latest" }]),
+      false,
+    );
   });
 });

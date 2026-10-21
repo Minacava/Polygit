@@ -1,3 +1,4 @@
+import cliProgress from "cli-progress";
 import type { ProviderName } from "../connectors/index.js";
 import {
   createProvider,
@@ -138,50 +139,78 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
     }
 
     const concurrency = options.concurrency ?? DEFAULT_TRANSLATE_CONCURRENCY;
-    await mapPool(llmQueue, concurrency, async (segment) => {
-      const maxAttempts = Math.max(1, (options.placeholderRetries ?? 1) + 1);
-      let translated = "";
-      let missing: string[] = [];
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        translated = await ensureProvider().translateSegment(
-          segment.source_text,
-          config.sourceLang,
-          lang,
-          {
-            glossary,
-            documentPath: segment.document_path,
-            ...(attempt > 0
-              ? {
-                  notes:
-                    `Previous translation dropped required placeholders: ${missing.join(", ")}. ` +
-                    `Preserve every placeholder, HTML tag, and link exactly.`,
-                }
-              : {}),
-          },
-        );
-        missing = missingPlaceholders(segment.source_text, translated);
-        if (missing.length === 0) break;
-      }
+    const showProgress =
+      llmQueue.length > 0 && !options.dryRun && Boolean(process.stdout.isTTY);
+    if (llmQueue.length > 0) {
+      console.log(
+        `Translating → ${lang}: tm-exact=${tmExact}, tm-fuzzy=${tmFuzzy}, llm=${llmQueue.length} pending…`,
+      );
+    }
 
-      if (missing.length > 0) {
-        // Keep draft for review; do not write broken text into TM as exact memory.
-        upsertTranslation(db, segment.id, lang, translated, "llm", false);
-        console.warn(
-          `Placeholder check failed for ${segment.document_path} (${segment.id.slice(0, 8)}…): missing ${missing.join(", ")}. Left unapproved for review.`,
-        );
-      } else {
-        upsertTranslation(db, segment.id, lang, translated, "llm");
-        upsertTranslationMemory(db, segment.source_text, translated, lang);
-        tmIndex.add({
-          id: `runtime_${segment.id}`,
-          source_text: segment.source_text,
-          target_text: translated,
-          lang,
-          usage_count: 1,
-        });
-      }
-      llm += 1;
-    });
+    let bar: cliProgress.SingleBar | null = null;
+    if (showProgress) {
+      bar = new cliProgress.SingleBar(
+        {
+          format: "LLM [{bar}] {percentage}% | {value}/{total} segments",
+          clearOnComplete: true,
+          hideCursor: true,
+        },
+        cliProgress.Presets.shades_classic,
+      );
+      bar.start(llmQueue.length, 0);
+    }
+
+    let llmDone = 0;
+    try {
+      await mapPool(llmQueue, concurrency, async (segment) => {
+        const maxAttempts = Math.max(1, (options.placeholderRetries ?? 1) + 1);
+        let translated = "";
+        let missing: string[] = [];
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          translated = await ensureProvider().translateSegment(
+            segment.source_text,
+            config.sourceLang,
+            lang,
+            {
+              glossary,
+              documentPath: segment.document_path,
+              ...(attempt > 0
+                ? {
+                    notes:
+                      `Previous translation dropped required placeholders: ${missing.join(", ")}. ` +
+                      `Preserve every placeholder, HTML tag, and link exactly.`,
+                  }
+                : {}),
+            },
+          );
+          missing = missingPlaceholders(segment.source_text, translated);
+          if (missing.length === 0) break;
+        }
+
+        if (missing.length > 0) {
+          // Keep draft for review; do not write broken text into TM as exact memory.
+          upsertTranslation(db, segment.id, lang, translated, "llm", false);
+          console.warn(
+            `Placeholder check failed for ${segment.document_path} (${segment.id.slice(0, 8)}…): missing ${missing.join(", ")}. Left unapproved for review.`,
+          );
+        } else {
+          upsertTranslation(db, segment.id, lang, translated, "llm");
+          upsertTranslationMemory(db, segment.source_text, translated, lang);
+          tmIndex.add({
+            id: `runtime_${segment.id}`,
+            source_text: segment.source_text,
+            target_text: translated,
+            lang,
+            usage_count: 1,
+          });
+        }
+        llm += 1;
+        llmDone += 1;
+        bar?.update(llmDone);
+      });
+    } finally {
+      bar?.stop();
+    }
 
     let written: string[] = [];
     if (!options.dryRun) {

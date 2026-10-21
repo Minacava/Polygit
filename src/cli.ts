@@ -9,6 +9,7 @@ import { runExportTmx } from "./commands/export-tmx.js";
 import { runGlossaryAdd, runGlossarySync } from "./commands/glossary.js";
 import { runImport } from "./commands/import.js";
 import { runInit } from "./commands/init.js";
+import { runLog } from "./commands/log.js";
 import { runPublish } from "./commands/publish.js";
 import { runReview } from "./commands/review.js";
 import { runStatus } from "./commands/status.js";
@@ -161,12 +162,39 @@ program
   .description("Commit configured content roots and translation outputs")
   .option("--yes", "Skip confirmation", false)
   .option("--message <message>", "Commit message")
-  .action(async (opts: { yes?: boolean; message?: string }) => {
+  .option(
+    "--ai",
+    "Generate the commit message from the diff with the configured LLM",
+    false,
+  )
+  .action(async (opts: { yes?: boolean; message?: string; ai?: boolean }) => {
     await runCommit({
       yes: Boolean(opts.yes),
+      ai: Boolean(opts.ai),
       ...(opts.message ? { message: opts.message } : {}),
     });
   });
+
+program
+  .command("log")
+  .description("Show recent commits that touch translation content roots")
+  .option("--limit <n>", "Max commits to show", "20")
+  .option("--stat", "List files changed in each commit", false)
+  .option(
+    "--grep-translate",
+    "Also include commits whose message matches translate: / translate(",
+    false,
+  )
+  .action(
+    async (opts: { limit?: string; stat?: boolean; grepTranslate?: boolean }) => {
+      const parsed = Number.parseInt(String(opts.limit ?? "20"), 10);
+      await runLog({
+        limit: Number.isFinite(parsed) ? parsed : 20,
+        stat: Boolean(opts.stat),
+        grepTranslate: Boolean(opts.grepTranslate),
+      });
+    },
+  );
 
 program
   .command("publish")

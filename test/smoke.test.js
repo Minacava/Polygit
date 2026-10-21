@@ -69,10 +69,11 @@ describe("cli smoke", () => {
     assert.equal(config.models.ollama, "llama3.2");
   });
 
-  it("exposes clone, publish, and models in --help", () => {
+  it("exposes clone, publish, models, and log in --help", () => {
     const help = run(process.cwd(), ["--help"]);
     assert.match(help, /\bclone\b/);
     assert.match(help, /\bpublish\b/);
     assert.match(help, /\bmodels\b/);
+    assert.match(help, /\blog\b/);
   });
 });

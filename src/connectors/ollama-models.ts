@@ -67,3 +67,27 @@ export function formatOllamaModelSize(bytes?: number): string {
   const mib = bytes / (1024 ** 2);
   return `${mib.toFixed(0)} MB`;
 }
+
+/**
+ * Ollama `/api/tags` returns tagged names (`llama3.2:latest`) while users often
+ * pass the short form (`llama3.2`). Treat untagged ids as matching any tag.
+ */
+export function ollamaModelMatches(
+  requested: string,
+  installedName: string,
+): boolean {
+  const want = requested.trim();
+  const have = installedName.trim();
+  if (!want || !have) return false;
+  if (want === have) return true;
+  if (!want.includes(":")) return have.startsWith(`${want}:`);
+  if (!have.includes(":")) return want.startsWith(`${have}:`);
+  return false;
+}
+
+export function isOllamaModelInstalled(
+  requested: string,
+  installed: ReadonlyArray<Pick<OllamaModelInfo, "name">>,
+): boolean {
+  return installed.some((m) => ollamaModelMatches(requested, m.name));
+}

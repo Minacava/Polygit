@@ -6,8 +6,10 @@ import {
   formatOllamaModelSize,
   getOllamaHost,
   HUGGINGFACE_CURATED_MODELS,
+  isOllamaModelInstalled,
   isProviderName,
   listOllamaModels,
+  ollamaModelMatches,
   PROVIDER_NAMES,
   resolveModel,
   resolveModelSync,
@@ -76,7 +78,7 @@ async function printOllamaDetails(config: TmConfig): Promise<void> {
     }
     console.log("  Installed models:");
     for (const m of installed) {
-      const mark = m.name === effective.model ? "*" : " ";
+      const mark = ollamaModelMatches(effective.model, m.name) ? "*" : " ";
       const size = formatOllamaModelSize(m.size);
       const params = m.parameterSize ? ` ${m.parameterSize}` : "";
       const meta = [size, params.trim()].filter(Boolean).join(" · ");
@@ -128,8 +130,7 @@ export async function runModelsUse(providerRaw: string, model: string): Promise<
   if (provider === "ollama") {
     try {
       const installed = await listOllamaModels();
-      const names = new Set(installed.map((m) => m.name));
-      if (installed.length > 0 && !names.has(modelId)) {
+      if (installed.length > 0 && !isOllamaModelInstalled(modelId, installed)) {
         console.warn(
           `Warning: "${modelId}" is not in the local Ollama list. Pull it with:\n  ollama pull ${modelId}`,
         );

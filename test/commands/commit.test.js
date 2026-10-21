@@ -34,6 +34,37 @@ describe("commit", () => {
     }
   });
 
+  it("uses --ai with an injected provider under --yes", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-commit-ai-"));
+    const prev = process.cwd();
+    process.chdir(root);
+    try {
+      await runInit();
+      const git = simpleGit(root);
+      await git.addConfig("user.name", "Test");
+      await git.addConfig("user.email", "test@example.com");
+
+      fs.writeFileSync(path.join(root, "sources", "a.md"), "Hello.\n", "utf8");
+      fs.mkdirSync(path.join(root, "outputs", "fr"), { recursive: true });
+      fs.writeFileSync(path.join(root, "outputs", "fr", "a.md"), "Bonjour.\n", "utf8");
+
+      await runCommit({
+        yes: true,
+        ai: true,
+        providerInstance: {
+          name: "ollama",
+          translateSegment: async () => "",
+          complete: async () => "translate(fr): add greeting",
+        },
+      });
+
+      const log = await git.log({ maxCount: 1 });
+      assert.match(log.latest.message, /translate\(fr\): add greeting/);
+    } finally {
+      process.chdir(prev);
+    }
+  });
+
   it("commits custom contentRoots for non-default layouts", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-commit-docs-"));
     const prev = process.cwd();

@@ -14,6 +14,8 @@ export const PROVIDER_NAMES = [
 
 export type ProviderName = (typeof PROVIDER_NAMES)[number];
 
+export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+
 export interface TranslationProvider {
   readonly name: ProviderName;
   translateSegment(
@@ -22,6 +24,11 @@ export interface TranslationProvider {
     targetLang: string,
     context?: TranslateContext,
   ): Promise<string>;
+  /**
+   * Free-form chat completion (system/user messages).
+   * Used for helpers such as AI commit messages.
+   */
+  complete?(messages: ChatMessage[]): Promise<string>;
 }
 
 export function isProviderName(value: string): value is ProviderName {

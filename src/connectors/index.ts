@@ -29,7 +29,12 @@ export function createProvider(
   }
 }
 
-export type { ProviderName, TranslateContext, TranslationProvider } from "./provider.js";
+export type {
+  ChatMessage,
+  ProviderName,
+  TranslateContext,
+  TranslationProvider,
+} from "./provider.js";
 export {
   buildTranslationMessages,
   DOCUMENT_DATA_END,
@@ -57,6 +62,8 @@ export {
 export {
   formatOllamaModelSize,
   getOllamaHost,
+  isOllamaModelInstalled,
   listOllamaModels,
+  ollamaModelMatches,
   type OllamaModelInfo,
 } from "./ollama-models.js";
