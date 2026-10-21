@@ -142,6 +142,8 @@ In `review`, each segment shows SOURCE and TARGET. Prompt: `Action [a/A/e/s/q] >
 | --- | --- |
 | `init` | Create `.tmconfig.json` (guided on TTY, or via flags) |
 | `config get` / `set` | Read or update languages, roots, `outputMode`, `autoTranslate` |
+| `sync` | Import NEW/CHANGED sources and translate (always unapproved) |
+| `hooks install` | Opt-in pre-commit that runs `polygit check` only |
 | `clone` | Clone a GitHub/GitLab repo and run `init` |
 | `import` | Import files/globs into pending segments |
 | `translate` | Translate pending/stale segments (TM first, then LLM) |
@@ -193,7 +195,7 @@ Untagged Ollama IDs (e.g. `llama3.2`) match tagged installs (e.g. `llama3.2:late
 }
 ```
 
-`autoTranslate` is written by `init` / `config set` but only takes effect once `polygit sync` is available.
+`autoTranslate` (from `init` / `config set`) signals that you intend to run `polygit sync` in your workflow. It does not install Git hooks — use `polygit hooks install` for an opt-in pre-commit `check`.
 
 | `outputMode` | `docs/getting-started.md` → `fr` |
 | --- | --- |
