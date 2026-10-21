@@ -41,8 +41,8 @@ export interface TmConfig {
   /** Used when outputMode is mirror (e.g. outputs, locales). */
   outputRoot: string;
   /**
-   * When true, `polygit sync` (piece 3) imports/translates NEW/CHANGED sources.
-   * Stored by init/config; has no runtime effect until sync lands.
+   * When true, signals intent to run `polygit sync` in the workflow.
+   * Does not install Git hooks by itself (`polygit hooks install` is opt-in).
    */
   autoTranslate: boolean;
   defaultProvider: ProviderName;

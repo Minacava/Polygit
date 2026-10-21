@@ -2,7 +2,7 @@
 
 Full flags and examples. For the product overview, see [README.md](README.md).
 
-Jump: [init](#init) · [config](#config) · [clone](#clone) · [import](#import) · [translate](#translate) · [models](#models) · [glossary](#glossary) · [review](#review) · [commit](#commit) · [log](#log) · [publish](#publish) · [status](#status) · [check](#check) · [export-tmx](#export-tmx)
+Jump: [init](#init) · [config](#config) · [clone](#clone) · [import](#import) · [translate](#translate) · [sync](#sync) · [models](#models) · [glossary](#glossary) · [review](#review) · [commit](#commit) · [log](#log) · [publish](#publish) · [status](#status) · [check](#check) · [hooks](#hooks) · [export-tmx](#export-tmx)
 
 ---
 
@@ -33,7 +33,7 @@ polygit init --source-lang=en --target-langs=fr,es --content=docs --output=local
 - Explicit flags override `--preset` layout roots.
 - If `.tmconfig.json` already exists, init does not modify it.
 
-`autoTranslate` may be set by the wizard (`Translate new files automatically?`). It is stored in `.tmconfig.json` but **only takes effect once `polygit sync` is available** (piece 3); until then it does not change runtime behavior.
+`autoTranslate` may be set by the wizard (`Translate new files automatically?`). When `true`, it signals that you intend to run `polygit sync` in your workflow; it does **not** install Git hooks by itself (see [`hooks install`](#hooks)).
 
 Creates: `.tmconfig.json`, content dirs, `.tm/db.sqlite`, `.gitignore`, `.env.example`. Initializes a Git repo if needed.
 
@@ -56,7 +56,7 @@ polygit config set autoTranslate true
 | `get <key>` | Print a value (`targetLangs` / `contentRoots` as comma-separated) |
 | `set <key> <value>` | Validate and write a value |
 
-Supported keys: `sourceLang`, `targetLangs`, `contentRoots`, `outputRoot`, `outputMode`, `autoTranslate`. Invalid values are rejected (same rules as reading config). `autoTranslate` is stored now; sync behavior arrives in a later release.
+Supported keys: `sourceLang`, `targetLangs`, `contentRoots`, `outputRoot`, `outputMode`, `autoTranslate`. Invalid values are rejected (same rules as reading config).
 
 ---
 
@@ -118,6 +118,28 @@ polygit translate fr --accept-fuzzy
 | `--dry-run` | Plan only — no writes, no LLM calls |
 | `--accept-fuzzy` | Apply fuzzy TM as unapproved drafts (skip LLM) |
 | `--no-branch` | Do not auto-create/checkout `polygit/translate-<lang>-…` when on main/master |
+
+---
+
+## `sync`
+
+Import **NEW** and **CHANGED** sources (same detection as `check`), then translate them to every `targetLangs` entry (or `--lang`).
+
+```bash
+polygit sync
+polygit sync --lang=fr
+polygit sync --provider=ollama --model=mistral
+polygit sync --dry-run
+```
+
+| Flag | Description |
+| --- | --- |
+| `--lang <lang>` | Translate only this language (default: all `targetLangs`) |
+| `--provider <name>` | `claude` \| `openai` \| `ollama` \| `huggingface` |
+| `--model <id>` | One-off model override |
+| `--dry-run` | Show NEW/CHANGED files and target langs without writing |
+
+**Safeguard:** sync never marks translations approved. `publish` still requires `review` (or `--allow-unapproved`). Setting `autoTranslate: true` does not install hooks; use [`hooks install`](#hooks) explicitly if you want a pre-commit `check`.
 
 ---
 
@@ -307,6 +329,40 @@ polygit check --json
 | --- | --- |
 | `--lang <lang>` | Language to check (default: all `targetLangs`) |
 | `--json` | Print a JSON report to stdout (for CI) |
+
+### GitHub Actions (PR gate)
+
+```yaml
+name: polygit check
+on:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npx polygit check --json
+```
+
+---
+
+## `hooks`
+
+Opt-in Git hooks. `autoTranslate` never installs hooks by itself.
+
+```bash
+polygit hooks install
+```
+
+| Subcommand | Description |
+| --- | --- |
+| `install` | Create a `pre-commit` hook via `git rev-parse --git-path hooks` (mode `0755`) that runs **only** `polygit check` |
+
+If a `pre-commit` hook already exists, install refuses to overwrite and exits with an error. The hook never runs `sync` and never approves translations.
 
 ---
 

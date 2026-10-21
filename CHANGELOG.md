@@ -2,9 +2,12 @@
 
 ## Unreleased
 
+- `sync`: import NEW/CHANGED sources and translate them; translations stay unapproved (publish still requires review)
+- `hooks install`: opt-in pre-commit via `git rev-parse --git-path hooks` (mode 0755) running only `polygit check`; never overwrites; never runs sync
+- Docs: GitHub Actions example running `polygit check` on pull requests
 - `init`: guided setup on TTY; flags `--source-lang`, `--target-langs`, `--content`, `--output` (flags override `--preset`); non-TTY keeps defaults with a warning
 - `config get` / `config set` for `sourceLang`, `targetLangs`, `contentRoots`, `outputRoot`, `outputMode`, `autoTranslate`
-- Config field `autoTranslate` (default `false`); stored by init/config — runtime effect arrives with `polygit sync`
+- Config field `autoTranslate` (default `false`); use with `sync` in your workflow — does not install hooks
 - `check`: real content lint — NEW (unimported), CHANGED (SHA-256 since import), pending/stale, and missing outputs; optional `--lang` (defaults to all `targetLangs`); `--json` for CI
 - Schema v5: `documents.content_hash` (migration from v4 preserves existing rows; null hash = CHANGED until re-import)
 - `isManagedOutputPath`: detect sidecar / in-place-locale outputs by language so they are not reported as NEW

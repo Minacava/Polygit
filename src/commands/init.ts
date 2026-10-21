@@ -339,7 +339,7 @@ export async function runInit(
   console.log(`  autoTranslate: ${fields.autoTranslate}`);
   if (fields.autoTranslate) {
     console.log(
-      "  note: autoTranslate is saved now; it takes effect once `polygit sync` is available.",
+      "  note: autoTranslate is on — run `polygit sync` in your workflow; hooks stay opt-in (`polygit hooks install`).",
     );
   }
   if (options.preset) console.log(`  preset: ${options.preset}`);
