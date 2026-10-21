@@ -22,6 +22,7 @@ import {
   hasUncommittedTranslationChanges,
   pushBranch,
 } from "../git/git.js";
+import { resolvePublishSourceBranch } from "../git/translation-branch.js";
 import {
   createForgeClient,
   detectForgeFromRemoteUrl,
@@ -122,11 +123,9 @@ async function publishOnce(
   const forge = createForgeClient(repo.kind);
 
   const targetBranch = options.targetBranch ?? (await getDefaultRemoteBranch(root));
-  const sourceBranch =
-    options.branch ??
-    `polygit/translate-${lang}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
-
   const current = await getCurrentBranch(root);
+  const sourceBranch = resolvePublishSourceBranch(lang, current, options.branch);
+
   if (current !== sourceBranch) {
     try {
       await checkoutBranch(root, sourceBranch, true);

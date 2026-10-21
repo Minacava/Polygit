@@ -25,6 +25,7 @@ import {
   upsertTranslation,
   upsertTranslationMemory,
 } from "../core/repository.js";
+import { ensureTranslationBranch } from "../git/translation-branch.js";
 
 /** Default parallel LLM calls during translate. */
 export const DEFAULT_TRANSLATE_CONCURRENCY = 3;
@@ -44,11 +45,18 @@ export interface TranslateOptions {
   providerInstance?: import("../connectors/index.js").TranslationProvider;
   /** Max LLM retries when placeholders are dropped (default 1 retry). */
   placeholderRetries?: number;
+  /**
+   * Skip auto-creating/checking out `polygit/translate-<lang>-…` when on main/master.
+   */
+  noBranch?: boolean;
 }
 
 export async function runTranslate(lang: string, options: TranslateOptions = {}): Promise<void> {
   assertLangCode(lang);
   const root = requireProjectRoot();
+  if (!options.noBranch) {
+    await ensureTranslationBranch(root, lang);
+  }
   const config = readConfig(root);
   const providerName: ProviderName = options.provider ?? config.defaultProvider;
   const modelChoice = await resolveTranslateModel(providerName, config, options.model);

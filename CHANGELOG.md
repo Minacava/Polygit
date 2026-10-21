@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `translate` / `review`: on `main`/`master`, auto-create `polygit/translate-<lang>-YYYYMMDD` for translation work
+- `publish`: reuse that branch and open a PR/MR to main when translations are approved
+- `translate` / `review` `--no-branch` to opt out
+
 ## 1.2.2
 
 - `translate`: TTY progress bar for LLM segments (`cli-progress`)
