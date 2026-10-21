@@ -58,6 +58,7 @@ export function runExportTmx(options: ExportTmxOptions): { outPath: string; unit
       `    creationtool="polygit"`,
       `    creationtoolversion="1"`,
       `    segtype="sentence"`,
+      `    o-tmf="polygit"`,
       `    adminlang="${escapeXml(sourceLang)}"`,
       `    srclang="${escapeXml(sourceLang)}"`,
       `    datatype="plaintext"`,
