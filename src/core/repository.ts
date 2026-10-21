@@ -243,11 +243,9 @@ export function upsertTranslationMemory(
   lang: string,
 ): void {
   const normalized = normalizeText(sourceText);
-  const existing = db
-    .prepare(`SELECT * FROM translation_memory WHERE lang = ?`)
-    .all(lang) as TranslationMemoryRow[];
-
-  const hit = existing.find((e) => normalizeText(e.source_text) === normalized);
+  const hit = db
+    .prepare(`SELECT id FROM translation_memory WHERE lang = ? AND source_norm = ?`)
+    .get(lang, normalized) as { id: string } | undefined;
   const ts = nowIso();
   if (hit) {
     db.prepare(
@@ -257,9 +255,10 @@ export function upsertTranslationMemory(
     ).run(targetText, ts, hit.id);
   } else {
     db.prepare(
-      `INSERT INTO translation_memory (id, source_text, target_text, lang, usage_count, updated_at)
-       VALUES (?, ?, ?, ?, 1, ?)`,
-    ).run(createId("tm"), sourceText, targetText, lang, ts);
+      `INSERT INTO translation_memory
+         (id, source_text, target_text, lang, usage_count, updated_at, source_norm)
+       VALUES (?, ?, ?, ?, 1, ?, ?)`,
+    ).run(createId("tm"), sourceText, targetText, lang, ts, normalized);
   }
 }
 

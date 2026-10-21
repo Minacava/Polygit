@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { normalizeText } from "./segmenter.js";
 
 /** Relative path of the on-disk SQLite file inside a polygit project. */
 export const DB_RELATIVE_PATH = path.join(".tm", "db.sqlite");
@@ -51,6 +52,8 @@ export interface TranslationMemoryRow {
   lang: string;
   usage_count: number;
   updated_at: string;
+  /** Whitespace-normalized source_text; used for indexed exact TM lookup. */
+  source_norm: string;
 }
 
 export interface GlossaryRow {
@@ -116,10 +119,12 @@ CREATE TABLE IF NOT EXISTS translation_memory (
   target_text TEXT NOT NULL,
   lang TEXT NOT NULL,
   usage_count INTEGER NOT NULL DEFAULT 1,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  source_norm TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tm_lang_source_unique ON translation_memory(lang, source_text);
+-- idx_tm_lang_source_norm_unique is created in ensureTmSourceNorm after source_norm exists.
 
 CREATE TABLE IF NOT EXISTS glossary (
   id TEXT PRIMARY KEY,
@@ -151,7 +156,77 @@ export function resolveDbPath(projectRoot: string): string {
  * Creates `.tm/` when missing.
  */
 
-const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
+
+/**
+ * Ensure translation_memory.source_norm exists, is backfilled with normalizeText
+ * (in JS, not SQL), and is uniquely indexed. When several rows share the same
+ * (lang, source_norm), keep the newest updated_at and sum usage_count into it.
+ * Leaves idx_tm_lang_source_unique in place.
+ */
+function ensureTmSourceNorm(db: Database.Database): void {
+  const tmCols = db.prepare(`PRAGMA table_info(translation_memory)`).all() as Array<{
+    name: string;
+  }>;
+  if (tmCols.length === 0) return;
+
+  if (!tmCols.some((c) => c.name === "source_norm")) {
+    db.exec(`ALTER TABLE translation_memory ADD COLUMN source_norm TEXT`);
+  }
+
+  const missing = db
+    .prepare(
+      `SELECT id, source_text FROM translation_memory WHERE source_norm IS NULL OR source_norm = ''`,
+    )
+    .all() as Array<{ id: string; source_text: string }>;
+  const setNorm = db.prepare(`UPDATE translation_memory SET source_norm = ? WHERE id = ?`);
+  for (const row of missing) {
+    setNorm.run(normalizeText(row.source_text), row.id);
+  }
+
+  // Collapse duplicates that only differ by whitespace after normalizeText.
+  const dupGroups = db
+    .prepare(
+      `SELECT lang, source_norm FROM translation_memory
+       GROUP BY lang, source_norm
+       HAVING COUNT(*) > 1`,
+    )
+    .all() as Array<{ lang: string; source_norm: string }>;
+  const selectDupes = db.prepare(
+    `SELECT id, usage_count, updated_at FROM translation_memory
+     WHERE lang = ? AND source_norm = ?
+     ORDER BY updated_at DESC, id DESC`,
+  );
+  const addUsage = db.prepare(
+    `UPDATE translation_memory SET usage_count = ? WHERE id = ?`,
+  );
+  const deleteById = db.prepare(`DELETE FROM translation_memory WHERE id = ?`);
+
+  for (const group of dupGroups) {
+    const rows = selectDupes.all(group.lang, group.source_norm) as Array<{
+      id: string;
+      usage_count: number;
+      updated_at: string;
+    }>;
+    if (rows.length < 2) continue;
+    const keep = rows[0]!;
+    let totalUsage = 0;
+    for (const row of rows) totalUsage += row.usage_count;
+    addUsage.run(totalUsage, keep.id);
+    for (const row of rows.slice(1)) {
+      deleteById.run(row.id);
+    }
+  }
+
+  try {
+    db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_tm_lang_source_norm_unique
+       ON translation_memory(lang, source_norm)`,
+    );
+  } catch {
+    // Should not happen after dedupe; keep open non-fatal like the raw-source index.
+  }
+}
 
 function ensureSchemaUpgrades(db: Database.Database): void {
   // translations.status (per-language workflow)
@@ -164,12 +239,15 @@ function ensureSchemaUpgrades(db: Database.Database): void {
     `);
   }
 
-  // Unique TM index (ignore failure if duplicates exist)
+  // Unique TM index on raw source_text (ignore failure if duplicates exist).
+  // Kept for compatibility; lookups use idx_tm_lang_source_norm_unique instead.
   try {
     db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tm_lang_source_unique ON translation_memory(lang, source_text)`);
   } catch {
     // Duplicate TM rows may exist in older DBs; non-fatal.
   }
+
+  ensureTmSourceNorm(db);
 
   db.exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL PRIMARY KEY)`);
   const row = db.prepare(`SELECT version FROM schema_version LIMIT 1`).get() as
@@ -177,7 +255,10 @@ function ensureSchemaUpgrades(db: Database.Database): void {
     | undefined;
   if (!row) {
     db.prepare(`INSERT INTO schema_version (version) VALUES (?)`).run(SCHEMA_VERSION);
-  } else if (row.version < SCHEMA_VERSION) {
+    return;
+  }
+
+  if (row.version < 3) {
     // Recreate documents table so format CHECK accepts po/yaml/xliff.
     db.exec(`
       CREATE TABLE IF NOT EXISTS documents_v3 (
@@ -192,6 +273,11 @@ function ensureSchemaUpgrades(db: Database.Database): void {
       DROP TABLE documents;
       ALTER TABLE documents_v3 RENAME TO documents;
     `);
+    db.prepare(`UPDATE schema_version SET version = ?`).run(3);
+    row.version = 3;
+  }
+
+  if (row.version < SCHEMA_VERSION) {
     db.prepare(`UPDATE schema_version SET version = ?`).run(SCHEMA_VERSION);
   }
 }
