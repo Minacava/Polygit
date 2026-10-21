@@ -13,16 +13,17 @@ Translate on your machine → approve in the terminal → open a **GitHub PR** o
 1. [Install](#install)
 2. [Use cases](#use-cases)
 3. [Quick start](#quick-start)
-4. [Command reference](#command-reference)
+4. [Paste into Cursor (example)](#paste-into-cursor-example)
+5. [Command reference](#command-reference)
    - [init](#init) · [clone](#clone) · [import](#import) · [translate](#translate)
    - [models](#models) · [glossary](#glossary) · [review](#review)
    - [commit](#commit) · [log](#log) · [publish](#publish)
    - [status](#status) · [check](#check) · [export-tmx](#export-tmx)
-5. [Providers & models](#providers--models)
-6. [Configuration](#configuration)
-7. [Access & permissions](#access--permissions)
-8. [Supported formats](#supported-formats)
-9. [License](#license)
+6. [Providers & models](#providers--models)
+7. [Configuration](#configuration)
+8. [Access & permissions](#access--permissions)
+9. [Supported formats](#supported-formats)
+10. [License](#license)
 
 ---
 
@@ -98,6 +99,38 @@ npx polygit publish --lang=fr --yes
 ### Second language
 
 Work is **per language**. After `fr` you can run `translate es` / `review --lang=es` without re-init. Segments missing `es` (or marked stale) are translated again.
+
+---
+
+## Paste into Cursor (example)
+
+Copy the block below into a **Cursor Agent** chat in your project. Change `es` (or `fr` / `ca`) and the model if you want. The agent should install polygit locally, put your README under `sources/`, import, translate, and leave outputs ready for review.
+
+````md
+Use polygit in this repo to translate the project README.
+
+1. If needed: `npm install -D polygit@latest` (Node 20+).
+2. Run `npx polygit init` if `.tmconfig.json` is missing.
+3. Ensure Ollama is running (`ollama serve`) and a model is available, e.g. `ollama pull llama3.2`.
+4. Create `sources/` if needed and copy the root `README.md` to `sources/readme.md`
+   (do not invent content — use the real README).
+5. Run:
+   - `npx polygit import sources/readme.md --format=markdown`
+   - `npx polygit models use ollama llama3.2`
+   - `npx polygit translate es`
+6. Show me `npx polygit status --lang=es` and list files under `outputs/es/`.
+7. Do **not** run `review` or `commit` unless I ask — leave translations for me to approve.
+
+If Ollama is unavailable, stop and tell me how to set `HF_TOKEN` / `ANTHROPIC_API_KEY` instead.
+````
+
+Optional follow-up after you like the draft:
+
+```text
+Run npx polygit review --lang=es interactively is not needed —
+instead summarize what changed in outputs/es/readme.md,
+then npx polygit commit --ai --yes and npx polygit log --stat.
+```
 
 ---
 
