@@ -88,7 +88,12 @@ program
   .option("--model <id>", "Model id/tag for the selected provider")
   .option("--dry-run", "Show plan without writing or calling the LLM", false)
   .option("--accept-fuzzy", "Apply fuzzy TM matches as unapproved drafts (skip LLM)", false)
-  .action(async (lang: string, opts: { doc?: string; provider?: string; model?: string; dryRun?: boolean; acceptFuzzy?: boolean }) => {
+  .option(
+    "--no-branch",
+    "Do not auto-create/checkout polygit/translate-<lang>-… when on main/master",
+    false,
+  )
+  .action(async (lang: string, opts: { doc?: string; provider?: string; model?: string; dryRun?: boolean; acceptFuzzy?: boolean; branch?: boolean }) => {
     let provider: ProviderName | undefined;
     if (opts.provider !== undefined) {
       if (!isProviderName(opts.provider)) {
@@ -104,6 +109,8 @@ program
       ...(opts.model ? { model: opts.model } : {}),
       dryRun: Boolean(opts.dryRun),
       acceptFuzzy: Boolean(opts.acceptFuzzy),
+      // commander --no-branch sets branch: false
+      noBranch: opts.branch === false,
     });
   });
 
@@ -140,7 +147,12 @@ program
   .description("Interactively approve or edit translations")
   .requiredOption("--lang <lang>", "Language to review")
   .option("--status <status>", "pending | translated | stale | approved")
-  .action(async (opts: { lang?: string; status?: string }) => {
+  .option(
+    "--no-branch",
+    "Do not auto-create/checkout polygit/translate-<lang>-… when on main/master",
+    false,
+  )
+  .action(async (opts: { lang?: string; status?: string; branch?: boolean }) => {
     const status = opts.status as SegmentStatus | undefined;
     if (
       status &&
@@ -154,6 +166,7 @@ program
     await runReview({
       ...(opts.lang ? { lang: opts.lang } : {}),
       ...(status ? { status } : {}),
+      noBranch: opts.branch === false,
     });
   });
 

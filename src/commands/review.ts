@@ -4,7 +4,12 @@ import type { SegmentStatus } from "../core/db.js";
 import { assertLangCode } from "../core/lang.js";
 import { writeOutputDocuments } from "../core/output.js";
 import { openProjectDb, requireProjectRoot } from "../core/project.js";
-import { listReviewSegments, upsertTranslation } from "../core/repository.js";
+import {
+  countUnapprovedTranslations,
+  listReviewSegments,
+  upsertTranslation,
+} from "../core/repository.js";
+import { ensureTranslationBranch } from "../git/translation-branch.js";
 
 /** Shown once at the start of an interactive review session. */
 export const REVIEW_KEY_TABLE = [
@@ -19,6 +24,8 @@ export const REVIEW_KEY_TABLE = [
 export interface ReviewOptions {
   lang?: string;
   status?: SegmentStatus;
+  /** Skip auto branch for translation work (see translate --no-branch). */
+  noBranch?: boolean;
 }
 
 export async function runReview(options: ReviewOptions = {}): Promise<void> {
@@ -29,6 +36,9 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
   }
   assertLangCode(options.lang);
   const root = requireProjectRoot();
+  if (!options.noBranch) {
+    await ensureTranslationBranch(root, options.lang);
+  }
   const db = openProjectDb(root);
   const rl = readline.createInterface({ input, output });
   const touchedDocs = new Set<string>();
@@ -87,6 +97,13 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
     if (options.lang && touchedDocs.size > 0) {
       const written = writeOutputDocuments(db, root, options.lang, [...touchedDocs]);
       console.log(`Updated outputs: ${written.join(", ")}`);
+    }
+
+    if (countUnapprovedTranslations(db, options.lang) === 0) {
+      console.log(
+        `\nAll ${options.lang} translations are approved. Open a PR to main with:\n` +
+          `  polygit publish --lang=${options.lang} --yes\n`,
+      );
     }
   } finally {
     rl.close();
