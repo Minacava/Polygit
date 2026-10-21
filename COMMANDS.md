@@ -362,7 +362,9 @@ polygit hooks install
 | --- | --- |
 | `install` | Create a `pre-commit` hook via `git rev-parse --git-path hooks` (mode `0755`) that runs **only** `polygit check` |
 
-If a `pre-commit` hook already exists, install refuses to overwrite and exits with an error. The hook never runs `sync` and never approves translations.
+If a `pre-commit` hook already exists, install refuses to overwrite and exits with a non-zero status. The hook never runs `sync` and never approves translations.
+
+The hook resolves `polygit` in this order: `./node_modules/.bin/polygit`, then `polygit` on `PATH`, then `npx --no-install polygit`. If none work, it prints how to install polygit and exits with an error (instead of a cryptic `not found`).
 
 ---
 

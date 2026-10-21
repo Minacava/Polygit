@@ -430,8 +430,14 @@ async function main(): Promise<void> {
   try {
     await program.parseAsync(process.argv);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`Error: ${redactSecrets(message)}`);
+    const alreadyPrinted =
+      err !== null &&
+      typeof err === "object" &&
+      (err as { alreadyPrinted?: boolean }).alreadyPrinted === true;
+    if (!alreadyPrinted) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Error: ${redactSecrets(message)}`);
+    }
     process.exitCode = 1;
   }
 }

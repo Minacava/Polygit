@@ -5,11 +5,37 @@ import { requireProjectRoot } from "../core/project.js";
 
 const PRE_COMMIT_NAME = "pre-commit";
 
+/**
+ * Pre-commit hook: run `polygit check` via local bin, PATH, or npx --no-install.
+ * Never runs sync. Clear error if polygit cannot be found.
+ */
 const PRE_COMMIT_SCRIPT = `#!/usr/bin/env sh
 # Installed by \`polygit hooks install\`.
 # Runs the content lint gate only — never auto-translates or auto-approves.
 set -e
-polygit check
+
+run_polygit_check() {
+  if [ -x "./node_modules/.bin/polygit" ]; then
+    exec "./node_modules/.bin/polygit" check
+  fi
+
+  if command -v polygit >/dev/null 2>&1; then
+    exec polygit check
+  fi
+
+  if command -v npx >/dev/null 2>&1; then
+    if npx --no-install polygit --help >/dev/null 2>&1; then
+      exec npx --no-install polygit check
+    fi
+  fi
+
+  echo "polygit hooks: polygit was not found." >&2
+  echo "Install it in this project (npm install polygit or npm install -D polygit)," >&2
+  echo "or install it globally, then retry your commit." >&2
+  exit 1
+}
+
+run_polygit_check
 `;
 
 function resolveHooksDir(projectRoot: string): string {
@@ -31,7 +57,7 @@ function resolveHooksDir(projectRoot: string): string {
 
 /**
  * Opt-in: install a pre-commit hook that runs `polygit check` only.
- * Never installs sync. Does not overwrite an existing hook.
+ * Never installs sync. Does not overwrite an existing hook (throws → exit ≠ 0).
  */
 export function runHooksInstall(): { hooksDir: string; path: string } {
   const root = requireProjectRoot();
@@ -47,11 +73,10 @@ export function runHooksInstall(): { hooksDir: string; path: string } {
   }
 
   fs.writeFileSync(hookPath, PRE_COMMIT_SCRIPT, { encoding: "utf8", mode: 0o755 });
-  // Ensure executable even if umask cleared bits from mode.
   fs.chmodSync(hookPath, 0o755);
 
   console.log(`Installed pre-commit hook at ${hookPath}`);
-  console.log("  runs: polygit check");
+  console.log("  runs: polygit check (via ./node_modules/.bin/polygit, PATH, or npx)");
   console.log("  note: does not run sync or approve translations");
   return { hooksDir, path: hookPath };
 }
