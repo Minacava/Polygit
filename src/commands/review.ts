@@ -6,6 +6,16 @@ import { writeOutputDocuments } from "../core/output.js";
 import { openProjectDb, requireProjectRoot } from "../core/project.js";
 import { listReviewSegments, upsertTranslation } from "../core/repository.js";
 
+/** Shown once at the start of an interactive review session. */
+export const REVIEW_KEY_TABLE = [
+  "Key  Action    Meaning",
+  "───  ────────  ──────────────────────────────────────────",
+  " a   approve   Keep the current TARGET and mark approved",
+  " e   edit      Type a new TARGET, then save + approve",
+  " s   skip      Leave this segment unchanged (Enter = skip)",
+  " q   quit      Stop the review session",
+].join("\n");
+
 export interface ReviewOptions {
   lang?: string;
   status?: SegmentStatus;
@@ -38,16 +48,16 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
       throw new Error("Interactive review requires a TTY.");
     }
 
-    console.log(
-      `Reviewing ${rows.length} segment(s). Commands: a=approve, e=edit, s=skip, q=quit\n`,
-    );
+    console.log(`Reviewing ${rows.length} segment(s).\n`);
+    console.log(REVIEW_KEY_TABLE);
+    console.log("");
 
     for (const row of rows) {
       console.log(`── ${row.document_path}  (${row.status})`);
       console.log(`SOURCE: ${row.source_text}`);
       console.log(`TARGET: ${row.target_text ?? "(none)"}`);
 
-      const answer = (await rl.question("[a/e/s/q] > ")).trim().toLowerCase();
+      const answer = (await rl.question("Action [a/e/s/q] > ")).trim().toLowerCase();
       if (answer === "q") break;
       if (answer === "s" || answer === "") continue;
 
