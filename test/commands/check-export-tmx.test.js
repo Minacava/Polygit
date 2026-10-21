@@ -7,6 +7,7 @@ import { runCheck } from "../../dist/commands/check.js";
 import { runExportTmx } from "../../dist/commands/export-tmx.js";
 import { runImport } from "../../dist/commands/import.js";
 import { runInit } from "../../dist/commands/init.js";
+import { writeOutputDocuments } from "../../dist/core/output.js";
 import { openProjectDb } from "../../dist/core/project.js";
 import { upsertTranslation, upsertTranslationMemory } from "../../dist/core/repository.js";
 import { hasIllegalXmlChars } from "../../dist/core/xml.js";
@@ -26,6 +27,7 @@ describe("check and export-tmx", () => {
       try {
         const seg = db.prepare(`SELECT id FROM segments LIMIT 1`).get();
         upsertTranslation(db, seg.id, "fr", "Bonjour le monde.", "manual", true);
+        writeOutputDocuments(db, root, "fr", ["sources/a.md"]);
       } finally {
         db.close();
       }

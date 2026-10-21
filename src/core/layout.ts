@@ -249,16 +249,39 @@ export function toOutputPath(
   return path.posix.join(root, lang, rel);
 }
 
+/**
+ * True when `relPath` is a translation output for one of `langs`, not a source.
+ * Sidecar / in-place-locale outputs live under contentRoots, so callers must
+ * pass target language codes to avoid treating sources as outputs.
+ */
 export function isManagedOutputPath(
   relPath: string,
   config: LayoutFields,
+  langs: readonly string[] = [],
 ): boolean {
   const posix = relPath.replace(/\\/g, "/");
   if (config.outputMode === "mirror") {
     return posix === config.outputRoot || posix.startsWith(`${config.outputRoot}/`);
   }
-  // Sidecar / in-place-locale outputs live under content roots.
-  return matchContentRoot(posix, config.contentRoots) !== null;
+
+  if (langs.length === 0) return false;
+
+  if (config.outputMode === "sidecar") {
+    if (matchContentRoot(posix, config.contentRoots) === null) return false;
+    const base = path.posix.basename(posix);
+    const ext = path.posix.extname(base);
+    const stem = ext ? base.slice(0, -ext.length) : base;
+    return langs.some((lang) => stem.endsWith(`.${lang}`));
+  }
+
+  // in-place-locale: contentRoot/<lang>/…
+  for (const root of config.contentRoots) {
+    for (const lang of langs) {
+      const prefix = `${root}/${lang}`;
+      if (posix === prefix || posix.startsWith(`${prefix}/`)) return true;
+    }
+  }
+  return false;
 }
 
 /** Prefixes git should stage/diff for translation artifacts. */

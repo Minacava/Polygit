@@ -7,6 +7,7 @@ import {
   assertInContentRoots,
   expandImportTargets,
   gitPathPrefixes,
+  isManagedOutputPath,
   layoutForPreset,
   listContentFiles,
   matchContentRoot,
@@ -45,6 +46,25 @@ describe("layout", () => {
       }),
       "docs/fr/getting-started.md",
     );
+  });
+
+  it("isManagedOutputPath detects outputs without flagging sources", () => {
+    const mirror = {
+      contentRoots: ["docs"],
+      outputMode: "mirror",
+      outputRoot: "locales",
+    };
+    assert.equal(isManagedOutputPath("locales/fr/a.md", mirror, ["fr"]), true);
+    assert.equal(isManagedOutputPath("docs/a.md", mirror, ["fr"]), false);
+
+    const sidecar = { ...mirror, outputMode: "sidecar" };
+    assert.equal(isManagedOutputPath("docs/a.fr.md", sidecar, ["fr"]), true);
+    assert.equal(isManagedOutputPath("docs/a.md", sidecar, ["fr"]), false);
+    assert.equal(isManagedOutputPath("docs/a.es.md", sidecar, ["fr"]), false);
+
+    const inplace = { ...mirror, outputMode: "in-place-locale" };
+    assert.equal(isManagedOutputPath("docs/fr/a.md", inplace, ["fr"]), true);
+    assert.equal(isManagedOutputPath("docs/a.md", inplace, ["fr"]), false);
   });
 
   it("defaults legacy configs to sources → outputs mirror", () => {
