@@ -26,4 +26,6 @@ jobs:
         run: npm run typecheck
 
       - name: Test with coverage
-        run: npm run build && node --test --experimental-test-coverage 'test/**/*.test.js'
+        # Expand the file list with find: quoted globs like 'test/**/*.test.js'
+        # are not expanded on Linux Node 20 in Actions (works on macOS Node 22).
+        run: npm run build && node --test --experimental-test-coverage $(find test -name '*.test.js' | sort)
