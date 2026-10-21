@@ -157,6 +157,128 @@ export async function pushBranch(
   }
 }
 
+export interface TranslationCommit {
+  hash: string;
+  hashShort: string;
+  date: string;
+  author: string;
+  message: string;
+  files?: string[];
+}
+
+export interface ListTranslationCommitsOptions {
+  limit?: number;
+  /** Include file paths changed in each commit. */
+  includeFiles?: boolean;
+  /**
+   * Also keep commits whose subject matches translate: / translate(
+   * (union with path-filtered commits, then re-sorted).
+   */
+  grepTranslate?: boolean;
+}
+
+/**
+ * Recent commits that touch configured translation roots (and optionally
+ * messages matching translate: / translate().
+ */
+export async function listTranslationCommits(
+  projectRoot: string,
+  options: ListTranslationCommitsOptions = {},
+): Promise<TranslationCommit[]> {
+  const git = simpleGit(projectRoot);
+  const limit = Math.max(1, options.limit ?? 20);
+  const prefixes = translationPrefixes(projectRoot);
+  const pathArgs = prefixes.map((p) => `${p}/`);
+  const fetchLimit = Math.max(limit * 3, limit);
+
+  const byHash = new Map<string, TranslationCommit>();
+
+  for (const c of await parseGitLog(git, [
+    "log",
+    `-n${fetchLimit}`,
+    "--format=%H%x09%cI%x09%an%x09%s",
+    "--",
+    ...pathArgs,
+  ])) {
+    byHash.set(c.hash, c);
+  }
+
+  if (options.grepTranslate) {
+    for (const c of await parseGitLog(git, [
+      "log",
+      `-n${fetchLimit}`,
+      "--extended-regexp",
+      "--grep=translate(:|\\()",
+      "--format=%H%x09%cI%x09%an%x09%s",
+    ])) {
+      if (!byHash.has(c.hash)) byHash.set(c.hash, c);
+    }
+  }
+
+  const sorted = [...byHash.values()]
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .slice(0, limit);
+
+  if (options.includeFiles) {
+    for (const c of sorted) {
+      c.files = await listCommitFiles(git, c.hash, pathArgs);
+    }
+  }
+
+  return sorted;
+}
+
+async function parseGitLog(
+  git: ReturnType<typeof simpleGit>,
+  args: string[],
+): Promise<TranslationCommit[]> {
+  try {
+    const raw = await git.raw(args);
+    if (!raw.trim()) return [];
+    return raw
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [hash, date, author, ...msgParts] = line.split("\t");
+        const full = hash ?? "";
+        return {
+          hash: full,
+          hashShort: full.slice(0, 7),
+          date: date ?? "",
+          author: author ?? "",
+          message: msgParts.join("\t").trim(),
+        };
+      })
+      .filter((c) => c.hash.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function listCommitFiles(
+  git: ReturnType<typeof simpleGit>,
+  hash: string,
+  pathPrefixes: string[],
+): Promise<string[]> {
+  try {
+    const raw = await git.raw([
+      "show",
+      "--name-only",
+      "--pretty=format:",
+      hash,
+      "--",
+      ...pathPrefixes,
+    ]);
+    return raw
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export async function hasUncommittedTranslationChanges(
   projectRoot: string,
 ): Promise<boolean> {

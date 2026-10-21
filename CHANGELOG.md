@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `translate`: show a TTY progress bar while LLM segments run (`cli-progress`)
+- `commit`: interactive message prompt; `--ai` generates a message from the diff via the configured provider
+- `log`: list recent commits that touch translation content roots (`--stat`, `--limit`, `--grep-translate`)
+
 ## 1.2.1
 
 Publishes the current `main` branch to npm. Use this instead of `1.2.0` on the registry.

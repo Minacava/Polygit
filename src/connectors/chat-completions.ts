@@ -2,6 +2,7 @@ import { fetchJson, HttpJsonError } from "../http/fetch-json.js";
 import {
   buildTranslationMessages,
   redactSecrets,
+  type ChatMessage,
   type ProviderName,
   type TranslateContext,
   type TranslationProvider,
@@ -39,6 +40,49 @@ export function createChatCompletionsProvider(
   const temperature = opts.temperature ?? 0.2;
   const timeoutMs = opts.timeoutMs ?? 60_000;
 
+  async function complete(messages: ChatMessage[]): Promise<string> {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (opts.apiKey) {
+      headers.authorization = `Bearer ${opts.apiKey}`;
+    }
+
+    let result;
+    try {
+      result = await fetchJson<ChatCompletionsResponse>(opts.endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: opts.model,
+          temperature,
+          messages,
+        }),
+        timeoutMs,
+        ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+      });
+    } catch (err) {
+      if (err instanceof HttpJsonError) {
+        throw new Error(
+          `${opts.label} API error (${err.status}): ${redactSecrets(err.message)}`,
+        );
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`${opts.label} request failed: ${redactSecrets(msg)}`);
+    }
+
+    if (!result.ok) {
+      const detail = result.data.error?.message ?? `HTTP ${result.status}`;
+      throw new Error(
+        `${opts.label} API error (${result.status}): ${redactSecrets(detail)}`,
+      );
+    }
+
+    const textOut = result.data.choices?.[0]?.message?.content?.trim();
+    if (!textOut) {
+      throw new Error(`${opts.label} returned an empty response.`);
+    }
+    return textOut;
+  }
+
   return {
     name: opts.name,
 
@@ -48,47 +92,9 @@ export function createChatCompletionsProvider(
       targetLang: string,
       context?: TranslateContext,
     ): Promise<string> {
-      const messages = buildTranslationMessages(text, sourceLang, targetLang, context);
-      const headers: Record<string, string> = { "content-type": "application/json" };
-      if (opts.apiKey) {
-        headers.authorization = `Bearer ${opts.apiKey}`;
-      }
-
-      let result;
-      try {
-        result = await fetchJson<ChatCompletionsResponse>(opts.endpoint, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            model: opts.model,
-            temperature,
-            messages,
-          }),
-          timeoutMs,
-          ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
-        });
-      } catch (err) {
-        if (err instanceof HttpJsonError) {
-          throw new Error(
-            `${opts.label} API error (${err.status}): ${redactSecrets(err.message)}`,
-          );
-        }
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`${opts.label} request failed: ${redactSecrets(msg)}`);
-      }
-
-      if (!result.ok) {
-        const detail = result.data.error?.message ?? `HTTP ${result.status}`;
-        throw new Error(
-          `${opts.label} API error (${result.status}): ${redactSecrets(detail)}`,
-        );
-      }
-
-      const textOut = result.data.choices?.[0]?.message?.content?.trim();
-      if (!textOut) {
-        throw new Error(`${opts.label} returned an empty translation.`);
-      }
-      return textOut;
+      return complete(buildTranslationMessages(text, sourceLang, targetLang, context));
     },
+
+    complete,
   };
 }

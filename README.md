@@ -38,11 +38,11 @@ polygit fits anywhere translations should live **next to the source, in Git**, b
 | --- | --- | --- |
 | **Documentation sites** (VitePress, Docusaurus, plain Markdown) | Presets map your `docs/` tree; translations land where the framework expects them | `init --preset=vitepress` |
 | **App UI strings** (JSON i18n files) | Every string leaf is a segment; keys and structure are preserved | `init --preset=json-i18n` |
+| **Scientific & academic writing** (papers, abstracts, lab protocols, grant summaries) | Keep drafts in Git; lock domain terms (gene names, units, drug names) in the glossary; run Ollama locally so unpublished work never leaves the lab | `glossary add` + `models use ollama` → `translate` → `review` |
 | **Sensitive or internal content** | Run fully local with Ollama — nothing leaves your machine | `models use ollama <tag>` |
 | **Contributing translations upstream** | Clone your fork, translate, approve, open a PR/MR in one flow | `clone` → `publish` |
 | **Consistent product terminology** | Glossary terms are injected into prompts; changing a term marks affected segments stale | `glossary add` / `sync` |
 | **Lower LLM cost on changing content** | Exact translation-memory hits are reused; only new text goes to the LLM | `translate <lang>` |
-| **More languages later** | Status is tracked per language, so adding `es` after `fr` costs nothing extra to set up | `translate es` |
 
 > **Current limits:** Supported formats are Markdown, JSON i18n, Gettext PO, YAML i18n, and XLIFF 1.2. Complex Markdown (tables, lists, front matter) is segmented best-effort — review those files carefully. Always approve output in `review` before publishing.
 
@@ -77,8 +77,14 @@ polygit translate fr
 polygit review --lang=fr
 
 # 7. Commit sources + outputs together
-polygit commit --yes
+polygit commit --yes --message "translate(fr): add intro"
+# or interactive (type a message, or Enter for the default):
+# polygit commit
+# or let the configured LLM draft the message from the diff:
+# polygit commit --ai
 ```
+
+`translate` shows a progress bar for LLM segments when stdout is a TTY.
 
 `init` creates `.env.example` and a `.gitignore` that ignores `.env` and `.tm/`. Copy `.env.example` → `.env` only if you later add cloud keys or forge tokens.
 
@@ -161,11 +167,43 @@ Segments already translated for `fr` are translated again for `es` when `es` has
 | `models use <provider> <model>` | Save model **and** set default provider |
 | `glossary add` / `glossary sync` | Preferred terms; sync marks **that lang** stale (optional retranslate) |
 | `review --lang=<lang>` | Approve / edit in the terminal (updates outputs; `--lang` required) |
-| `commit` | Commit configured content roots (+ mirror `outputRoot`) |
+| `commit` | Commit configured content roots (+ mirror `outputRoot`); see [Commit messages](#commit-messages) |
+| `log` | Show recent commits that touch translation roots (`--stat`, `--limit`, `--grep-translate`) |
 | `publish --lang=<lang>` | After approval: commit → push branch → GitHub PR or GitLab MR |
 | `status [--lang=<lang>]` | Layout roots, on-disk counts, and per-document status |
 | `check --lang=<lang>` | CI gate: exit non-zero if any segment is pending or stale |
 | `export-tmx --lang=<lang>` | Export translation memory as TMX 1.4 (`--out` optional) |
+
+### Commit messages
+
+`polygit commit` only stages files under your configured content roots (e.g. `sources/` + `outputs/`). You choose the commit message in one of three ways:
+
+| Mode | Command | When to use |
+| --- | --- | --- |
+| **Manual (flag)** | `polygit commit --message "translate(fr): add intro" --yes` | You already know the message; good for scripts/CI |
+| **Interactive** | `polygit commit` | Shows the diff, then asks you to type a message (Enter = `translate: update content (YYYY-MM-DD)`), then confirm |
+| **AI-drafted** | `polygit commit --ai` | Uses your configured LLM (Ollama / Claude / …) to propose a one-line message from the diff; you can accept, edit (`e`), or decline |
+
+Add `--yes` to skip the final “Proceed?” confirmation (required in non-interactive shells).
+
+```bash
+# Explicit message, no prompts
+polygit commit --message "translate(fr): add intro" --yes
+
+# LLM drafts the message from the diff, then commits without asking
+polygit commit --ai --yes
+
+# Interactive: type your own message, or run with --ai and review the proposal
+polygit commit
+polygit commit --ai
+```
+
+Afterwards, inspect those commits with:
+
+```bash
+polygit log
+polygit log --stat --limit 10
+```
 
 ### Useful flags
 
@@ -182,6 +220,7 @@ polygit review --lang=fr --status=translated
 polygit status --lang=fr
 polygit check --lang=fr
 polygit export-tmx --lang=fr --out=tm-fr.tmx
+polygit log --grep-translate
 polygit publish --lang=fr --draft --yes
 polygit publish --lang=fr --forge=gitlab --yes
 polygit publish --lang=fr --allow-unapproved   # skip local approval (not recommended)
