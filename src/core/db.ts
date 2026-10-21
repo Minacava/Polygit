@@ -21,6 +21,8 @@ export interface DocumentRow {
   format: DocumentFormat;
   imported_at: string;
   updated_at: string;
+  /** SHA-256 of file contents at last import; null/missing means CHANGED on check. */
+  content_hash: string | null;
 }
 
 export interface SegmentRow {
@@ -78,7 +80,8 @@ CREATE TABLE IF NOT EXISTS documents (
   path TEXT NOT NULL UNIQUE,
   format TEXT NOT NULL CHECK (format IN ('markdown', 'json-i18n', 'po', 'yaml', 'xliff')),
   imported_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  content_hash TEXT
 );
 
 CREATE TABLE IF NOT EXISTS segments (
@@ -156,7 +159,7 @@ export function resolveDbPath(projectRoot: string): string {
  * Creates `.tm/` when missing.
  */
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * Ensure translation_memory.source_norm exists, is backfilled with normalizeText
@@ -228,6 +231,15 @@ function ensureTmSourceNorm(db: Database.Database): void {
   }
 }
 
+/** Add documents.content_hash when missing (v4 → v5). Existing rows stay NULL. */
+function ensureDocumentsContentHash(db: Database.Database): void {
+  const docCols = db.prepare(`PRAGMA table_info(documents)`).all() as Array<{ name: string }>;
+  if (docCols.length === 0) return;
+  if (!docCols.some((c) => c.name === "content_hash")) {
+    db.exec(`ALTER TABLE documents ADD COLUMN content_hash TEXT`);
+  }
+}
+
 function ensureSchemaUpgrades(db: Database.Database): void {
   // translations.status (per-language workflow)
   const trCols = db.prepare(`PRAGMA table_info(translations)`).all() as Array<{ name: string }>;
@@ -248,6 +260,7 @@ function ensureSchemaUpgrades(db: Database.Database): void {
   }
 
   ensureTmSourceNorm(db);
+  ensureDocumentsContentHash(db);
 
   db.exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL PRIMARY KEY)`);
   const row = db.prepare(`SELECT version FROM schema_version LIMIT 1`).get() as
@@ -275,9 +288,12 @@ function ensureSchemaUpgrades(db: Database.Database): void {
     `);
     db.prepare(`UPDATE schema_version SET version = ?`).run(3);
     row.version = 3;
+    // content_hash added below for any version < 5.
+    ensureDocumentsContentHash(db);
   }
 
   if (row.version < SCHEMA_VERSION) {
+    ensureDocumentsContentHash(db);
     db.prepare(`UPDATE schema_version SET version = ?`).run(SCHEMA_VERSION);
   }
 }

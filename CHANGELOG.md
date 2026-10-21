@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `check`: real content lint — NEW (unimported), CHANGED (SHA-256 since import), pending/stale, and missing outputs; optional `--lang` (defaults to all `targetLangs`); `--json` for CI
+- Schema v5: `documents.content_hash` (migration from v4 preserves existing rows; null hash = CHANGED until re-import)
+- `isManagedOutputPath`: detect sidecar / in-place-locale outputs by language so they are not reported as NEW
+
 ## 1.2.3
 
 - `review`: interactive `A` / `aa` / `all` approves the current segment and all remaining with a TARGET

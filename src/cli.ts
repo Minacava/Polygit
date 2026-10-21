@@ -316,10 +316,16 @@ program
 
 program
   .command("check")
-  .description("CI gate: fail if any segment is pending or stale for a language")
-  .requiredOption("--lang <lang>", "Language to check")
-  .action((opts: { lang: string }) => {
-    runCheck({ lang: opts.lang });
+  .description(
+    "CI gate: fail on NEW/CHANGED sources, pending/stale segments, or missing outputs",
+  )
+  .option("--lang <lang>", "Language to check (default: all targetLangs)")
+  .option("--json", "Print machine-readable JSON to stdout", false)
+  .action((opts: { lang?: string; json?: boolean }) => {
+    runCheck({
+      ...(opts.lang ? { lang: opts.lang } : {}),
+      json: Boolean(opts.json),
+    });
   });
 
 program

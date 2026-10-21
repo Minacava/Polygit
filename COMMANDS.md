@@ -251,15 +251,27 @@ polygit status --lang=fr
 
 ## `check`
 
-CI gate: exit non-zero if any segment is pending or stale for a language.
+CI gate: exit non-zero when sources drift or translations are incomplete.
+
+Fails on:
+
+- **NEW** — supported files under `contentRoots` that are not in the DB (managed outputs excluded)
+- **CHANGED** — imported files whose content SHA-256 differs since last import (rows without a hash count as CHANGED)
+- **pending / stale** segments per language
+- **missing output files** on disk for `toOutputPath`
+
+Without `--lang`, checks every language in `targetLangs`. If `targetLangs` is empty and `--lang` is omitted, exits with a clear error.
 
 ```bash
+polygit check
 polygit check --lang=fr
+polygit check --json
 ```
 
 | Flag | Description |
 | --- | --- |
-| `--lang <lang>` | Language to check (**required**) |
+| `--lang <lang>` | Language to check (default: all `targetLangs`) |
+| `--json` | Print a JSON report to stdout (for CI) |
 
 ---
 
