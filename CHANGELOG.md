@@ -1,10 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.2.2
 
-- `translate`: show a TTY progress bar while LLM segments run (`cli-progress`)
-- `commit`: interactive message prompt; `--ai` generates a message from the diff via the configured provider
-- `log`: list recent commits that touch translation content roots (`--stat`, `--limit`, `--grep-translate`)
+- `translate`: TTY progress bar for LLM segments (`cli-progress`)
+- `commit`: interactive message prompt; `--ai` drafts a message from the diff
+- `log`: list recent translation commits (`--stat`, `--limit`, `--grep-translate`)
+- Docs: README index + full command reference; Cursor paste-prompt example
+- Ollama: match untagged model ids to tagged local installs
 
 ## 1.2.1
 
