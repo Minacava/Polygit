@@ -56,6 +56,7 @@ describe("check and export-tmx", () => {
       assert.equal(units, 2);
       const xml = fs.readFileSync(outPath, "utf8");
       assert.match(xml, /<tmx version="1\.4">/);
+      assert.match(xml, /\bo-tmf="polygit"/);
       assert.match(xml, /xml:lang="en"><seg>Hello<\/seg>/);
       assert.match(xml, /xml:lang="es"><seg>Hola<\/seg>/);
       assert.match(xml, /<seg>Adiós<\/seg>/);
