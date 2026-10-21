@@ -175,6 +175,7 @@ describe("publish gate", () => {
         forgeHosts: ["github.mycompany.com"],
       });
       await git.addRemote("origin", "https://github.mycompany.com/acme/docs.git");
+      const baseBranch = (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
 
       // Host is confirmed via forgeHosts; publish proceeds past forge resolution
       // and fails later on push (no real remote) — not on trust checks.
@@ -191,7 +192,7 @@ describe("publish gate", () => {
 
       // Branch must be restored after failure.
       const branch = (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
-      assert.equal(branch, "master");
+      assert.equal(branch, baseBranch);
     } finally {
       if (prevToken === undefined) delete process.env.GITHUB_TOKEN;
       else process.env.GITHUB_TOKEN = prevToken;
