@@ -1,7 +1,7 @@
 {
   "name": "polygit",
   "version": "1.2.2",
-  "description": "Local-first CLI for assisted translation with translation memory, glossary propagation, Git integration, and LLM providers.",
+  "description": "Local-first translation CLI: translation memory + glossary in Git, LLM only for new text (Claude, OpenAI, Ollama, Hugging Face), approve in terminal, ship as a PR/MR.",
   "license": "MIT",
   "author": "Marina Camacho",
   "repository": {
@@ -13,14 +13,16 @@
   },
   "homepage": "https://github.com/Minacava/polygit#readme",
   "keywords": [
-    "translation",
     "i18n",
-    "cli",
+    "translation",
     "translation-memory",
+    "llm",
+    "ollama",
+    "cli",
+    "localization",
+    "local-first",
     "glossary",
     "git",
-    "llm",
-    "local-first",
     "cat-tool",
     "polygit"
   ],
@@ -39,6 +41,7 @@
   "files": [
     "dist",
     "README.md",
+    "COMMANDS.md",
     "LICENSE",
     ".env.example",
     "CHANGELOG.md",
