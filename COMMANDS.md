@@ -2,7 +2,7 @@
 
 Full flags and examples. For the product overview, see [README.md](README.md).
 
-Jump: [init](#init) · [clone](#clone) · [import](#import) · [translate](#translate) · [models](#models) · [glossary](#glossary) · [review](#review) · [commit](#commit) · [log](#log) · [publish](#publish) · [status](#status) · [check](#check) · [export-tmx](#export-tmx)
+Jump: [init](#init) · [config](#config) · [clone](#clone) · [import](#import) · [translate](#translate) · [models](#models) · [glossary](#glossary) · [review](#review) · [commit](#commit) · [log](#log) · [publish](#publish) · [status](#status) · [check](#check) · [export-tmx](#export-tmx)
 
 ---
 
@@ -15,13 +15,48 @@ polygit init
 polygit init --preset=vitepress      # docs/ + in-place-locale
 polygit init --preset=docusaurus
 polygit init --preset=json-i18n      # locales/ + in-place-locale
+polygit init --source-lang=en --target-langs=fr,es --content=docs --output=locales
 ```
 
 | Flag | Description |
 | --- | --- |
 | `--preset <name>` | Layout preset: `vitepress` \| `docusaurus` \| `json-i18n`. Default: `sources/` → `outputs/<lang>/` mirror |
+| `--source-lang <lang>` | Source language (e.g. `en`) |
+| `--target-langs <list>` | Comma-separated target languages |
+| `--content <dirs>` | Comma-separated content root folders |
+| `--output <dir>` | Translations folder (`outputRoot`) |
+
+- **All flags set:** writes config with no prompts.
+- **Some flags:** on a TTY, asks only for the missing values (validated with `assertLangCode` / `normalizeRootPath`; source cannot be a target).
+- **No flags + TTY:** step-by-step wizard (defaults in `[brackets]`; Enter accepts).
+- **No TTY (CI/scripts):** uses defaults and prints a warning (same non-interactive behavior as before).
+- Explicit flags override `--preset` layout roots.
+- If `.tmconfig.json` already exists, init does not modify it.
+
+`autoTranslate` may be set by the wizard (`Translate new files automatically?`). It is stored in `.tmconfig.json` but **only takes effect once `polygit sync` is available** (piece 3); until then it does not change runtime behavior.
 
 Creates: `.tmconfig.json`, content dirs, `.tm/db.sqlite`, `.gitignore`, `.env.example`. Initializes a Git repo if needed.
+
+---
+
+## `config`
+
+Read or update keys in `.tmconfig.json` after init.
+
+```bash
+polygit config get sourceLang
+polygit config set targetLangs fr,es
+polygit config set contentRoots docs,blog
+polygit config set outputMode sidecar
+polygit config set autoTranslate true
+```
+
+| Subcommand | Description |
+| --- | --- |
+| `get <key>` | Print a value (`targetLangs` / `contentRoots` as comma-separated) |
+| `set <key> <value>` | Validate and write a value |
+
+Supported keys: `sourceLang`, `targetLangs`, `contentRoots`, `outputRoot`, `outputMode`, `autoTranslate`. Invalid values are rejected (same rules as reading config). `autoTranslate` is stored now; sync behavior arrives in a later release.
 
 ---
 

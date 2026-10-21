@@ -5,6 +5,7 @@ import path from "node:path";
 import { runCheck } from "./commands/check.js";
 import { runClone } from "./commands/clone.js";
 import { runCommit } from "./commands/commit.js";
+import { runConfigGet, runConfigSet } from "./commands/config.js";
 import { runExportTmx } from "./commands/export-tmx.js";
 import { runGlossaryAdd, runGlossarySync } from "./commands/glossary.js";
 import { runImport } from "./commands/import.js";
@@ -40,8 +41,48 @@ program
     "--preset <name>",
     "Layout preset: vitepress | docusaurus | json-i18n (default: sources→outputs mirror)",
   )
-  .action(async (opts: { preset?: string }) => {
-    await runInit(process.cwd(), opts.preset ? { preset: opts.preset } : {});
+  .option("--source-lang <lang>", "Source language code (e.g. en)")
+  .option("--target-langs <list>", "Comma-separated target language codes")
+  .option("--content <dirs>", "Comma-separated content root folders")
+  .option("--output <dir>", "Folder for translations (outputRoot)")
+  .action(
+    async (opts: {
+      preset?: string;
+      sourceLang?: string;
+      targetLangs?: string;
+      content?: string;
+      output?: string;
+    }) => {
+      await runInit(process.cwd(), {
+        ...(opts.preset ? { preset: opts.preset } : {}),
+        ...(opts.sourceLang !== undefined ? { sourceLang: opts.sourceLang } : {}),
+        ...(opts.targetLangs !== undefined ? { targetLangs: opts.targetLangs } : {}),
+        ...(opts.content !== undefined ? { content: opts.content } : {}),
+        ...(opts.output !== undefined ? { output: opts.output } : {}),
+        interactive: Boolean(process.stdin.isTTY),
+      });
+    },
+  );
+
+const configCmd = program
+  .command("config")
+  .description("Get or set values in .tmconfig.json");
+
+configCmd
+  .command("get")
+  .description("Print a config value")
+  .argument("<key>", "sourceLang | targetLangs | contentRoots | outputRoot | outputMode | autoTranslate")
+  .action((key: string) => {
+    runConfigGet(key);
+  });
+
+configCmd
+  .command("set")
+  .description("Update a config value (validated like readConfig)")
+  .argument("<key>", "sourceLang | targetLangs | contentRoots | outputRoot | outputMode | autoTranslate")
+  .argument("<value>", "New value (comma-separated for lists; true/false for autoTranslate)")
+  .action((key: string, value: string) => {
+    runConfigSet(key, value);
   });
 
 program

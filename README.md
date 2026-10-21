@@ -140,7 +140,8 @@ In `review`, each segment shows SOURCE and TARGET. Prompt: `Action [a/A/e/s/q] >
 
 | Command | What it does |
 | --- | --- |
-| `init` | Create `.tmconfig.json`, content dirs, and the local SQLite DB |
+| `init` | Create `.tmconfig.json` (guided on TTY, or via flags) |
+| `config get` / `set` | Read or update languages, roots, `outputMode`, `autoTranslate` |
 | `clone` | Clone a GitHub/GitLab repo and run `init` |
 | `import` | Import files/globs into pending segments |
 | `translate` | Translate pending/stale segments (TM first, then LLM) |
@@ -186,10 +187,13 @@ Untagged Ollama IDs (e.g. `llama3.2`) match tagged installs (e.g. `llama3.2:late
   "contentRoots": ["sources"],
   "outputMode": "mirror",
   "outputRoot": "outputs",
+  "autoTranslate": false,
   "defaultProvider": "ollama",
   "models": { "ollama": "llama3.2" }
 }
 ```
+
+`autoTranslate` is written by `init` / `config set` but only takes effect once `polygit sync` is available.
 
 | `outputMode` | `docs/getting-started.md` → `fr` |
 | --- | --- |
