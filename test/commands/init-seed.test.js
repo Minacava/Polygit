@@ -11,7 +11,7 @@ describe("init seeding", () => {
     const prev = process.cwd();
     process.chdir(root);
     try {
-      await runInit();
+      await runInit(root, { interactive: false });
       assert.ok(fs.existsSync(path.join(root, ".gitignore")));
       assert.ok(fs.existsSync(path.join(root, ".env.example")));
       assert.ok(fs.existsSync(path.join(root, "sources")));
@@ -25,6 +25,7 @@ describe("init seeding", () => {
       assert.deepEqual(config.contentRoots, ["sources"]);
       assert.equal(config.outputMode, "mirror");
       assert.equal(config.outputRoot, "outputs");
+      assert.equal(config.autoTranslate, false);
     } finally {
       process.chdir(prev);
     }
@@ -40,7 +41,7 @@ describe("init seeding", () => {
       const prev = process.cwd();
       process.chdir(root);
       try {
-        await runInit(root, { preset });
+        await runInit(root, { preset, interactive: false });
         assert.ok(fs.existsSync(path.join(root, expectedRoot)));
         assert.equal(fs.existsSync(path.join(root, "outputs")), false);
         const config = JSON.parse(
@@ -65,7 +66,7 @@ describe("init seeding", () => {
     process.chdir(root);
     try {
       fs.writeFileSync(path.join(root, ".gitignore"), "node_modules/\n", "utf8");
-      await runInit();
+      await runInit(root, { interactive: false });
       const gi = fs.readFileSync(path.join(root, ".gitignore"), "utf8");
       assert.match(gi, /node_modules\//);
       assert.match(gi, /\.tm\//);

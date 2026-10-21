@@ -47,7 +47,7 @@ export async function runClone(url: string, options: CloneOptions = {}): Promise
   console.log(`Cloned ${safeUrl}`);
 
   if (options.init !== false) {
-    await runInit(targetDir);
+    await runInit(targetDir, { interactive: false });
     console.log(`\nNext steps:`);
     console.log(`  cd ${targetDir}`);
     console.log(`  # point contentRoots at your docs (or use --preset on init), then:`);

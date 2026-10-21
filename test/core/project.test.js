@@ -39,6 +39,27 @@ describe("project", () => {
     assert.deepEqual(config.contentRoots, ["sources"]);
     assert.equal(config.outputMode, "mirror");
     assert.equal(config.outputRoot, "outputs");
+    assert.equal(config.autoTranslate, false);
+  });
+
+  it("parses autoTranslate and rejects sourceLang in targetLangs", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-project-"));
+    writeConfig(root, { ...DEFAULT_CONFIG, autoTranslate: true, targetLangs: ["fr"] });
+    assert.equal(readConfig(root).autoTranslate, true);
+
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({ autoTranslate: "yes" }),
+      "utf8",
+    );
+    assert.throws(() => readConfig(root), /autoTranslate must be a boolean/);
+
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({ sourceLang: "en", targetLangs: ["en", "fr"] }),
+      "utf8",
+    );
+    assert.throws(() => readConfig(root), /must not appear in targetLangs/);
   });
 
   it("reads ollama and huggingface defaultProvider values", () => {

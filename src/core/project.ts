@@ -40,6 +40,11 @@ export interface TmConfig {
   outputMode: OutputMode;
   /** Used when outputMode is mirror (e.g. outputs, locales). */
   outputRoot: string;
+  /**
+   * When true, `polygit sync` (piece 3) imports/translates NEW/CHANGED sources.
+   * Stored by init/config; has no runtime effect until sync lands.
+   */
+  autoTranslate: boolean;
   defaultProvider: ProviderName;
   /** Optional per-provider model ids (e.g. Ollama tag or HF model id). */
   models: ProviderModels;
@@ -56,6 +61,7 @@ export const DEFAULT_CONFIG: TmConfig = {
   contentRoots: [...DEFAULT_CONTENT_ROOTS],
   outputMode: DEFAULT_OUTPUT_MODE,
   outputRoot: DEFAULT_OUTPUT_ROOT,
+  autoTranslate: false,
   defaultProvider: "ollama",
   models: {},
   forgeHosts: [],
@@ -114,26 +120,31 @@ export function readConfig(projectRoot: string): TmConfig {
   const obj = raw as Record<string, unknown>;
   const outputMode = parseOutputMode(obj.outputMode);
 
+  const sourceLang = parseSourceLang(obj.sourceLang);
+  const targetLangs = parseTargetLangs(obj.targetLangs);
+  assertSourceNotInTargets(sourceLang, targetLangs);
+
   return {
-    sourceLang: parseSourceLang(obj.sourceLang),
-    targetLangs: parseTargetLangs(obj.targetLangs),
+    sourceLang,
+    targetLangs,
     contentRoots: parseContentRoots(obj.contentRoots),
     outputMode,
     outputRoot: parseOutputRoot(obj.outputRoot, outputMode),
+    autoTranslate: parseAutoTranslate(obj.autoTranslate),
     defaultProvider: parseProviderName(obj.defaultProvider),
     models: parseProviderModels(obj.models),
     forgeHosts: parseForgeHosts(obj.forgeHosts),
   };
 }
 
-function parseSourceLang(value: unknown): string {
+export function parseSourceLang(value: unknown): string {
   if (value === undefined || value === null || value === "") {
     return DEFAULT_CONFIG.sourceLang;
   }
   return assertLangCode(value, "sourceLang");
 }
 
-function parseTargetLangs(value: unknown): string[] {
+export function parseTargetLangs(value: unknown): string[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) {
     throw new Error("targetLangs must be an array of language codes");
@@ -142,6 +153,40 @@ function parseTargetLangs(value: unknown): string[] {
     throw new Error(`targetLangs exceeds maximum of ${MAX_TARGET_LANGS} entries`);
   }
   return value.map((item, i) => assertLangCode(item, `targetLangs[${i}]`));
+}
+
+export function parseAutoTranslate(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "boolean") return value;
+  throw new Error(`autoTranslate must be a boolean, got ${JSON.stringify(value)}`);
+}
+
+/** Parse CLI/prompt yes/no into a boolean. */
+export function parseBoolFlag(raw: string, label = "value"): boolean {
+  const v = raw.trim().toLowerCase();
+  if (["y", "yes", "true", "1"].includes(v)) return true;
+  if (["n", "no", "false", "0", ""].includes(v)) return false;
+  throw new Error(`Invalid ${label}: ${JSON.stringify(raw)}. Use y/n or true/false.`);
+}
+
+/** Split a comma-separated language list and validate each code. */
+export function parseLangCsv(raw: string, label = "languages"): string[] {
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length > MAX_TARGET_LANGS) {
+    throw new Error(`${label} exceeds maximum of ${MAX_TARGET_LANGS} entries`);
+  }
+  return parts.map((item, i) => assertLangCode(item, `${label}[${i}]`));
+}
+
+export function assertSourceNotInTargets(sourceLang: string, targetLangs: string[]): void {
+  if (targetLangs.some((l) => l.toLowerCase() === sourceLang.toLowerCase())) {
+    throw new Error(
+      `sourceLang (${sourceLang}) must not appear in targetLangs (${targetLangs.join(", ")})`,
+    );
+  }
 }
 
 /** Hostnames only (no scheme, path, or credentials). */
