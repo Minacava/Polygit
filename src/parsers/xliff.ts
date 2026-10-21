@@ -1,4 +1,5 @@
 import type { RawSegment } from "../core/segmenter.js";
+import { escapeXml } from "../core/xml.js";
 import type { ParsedDocument, Parser } from "./types.js";
 
 interface XliffUnit {
@@ -22,15 +23,6 @@ function decodeXml(text: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&");
-}
-
-function encodeXml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 }
 
 /**
@@ -93,12 +85,12 @@ export const xliffParser: Parser = {
         if (/<target\b/i.test(block)) {
           return block.replace(
             /<target\b[^>]*>[\s\S]*?<\/target>/i,
-            `<target>${encodeXml(translated)}</target>`,
+            `<target>${escapeXml(translated)}</target>`,
           );
         }
         return block.replace(
           /<\/source>/i,
-          `</source>\n        <target>${encodeXml(translated)}</target>`,
+          `</source>\n        <target>${escapeXml(translated)}</target>`,
         );
       });
     }

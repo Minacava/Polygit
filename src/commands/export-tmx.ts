@@ -8,20 +8,12 @@ import {
   resolveInsideProject,
 } from "../core/project.js";
 import { getTmEntries } from "../core/repository.js";
+import { escapeXml } from "../core/xml.js";
 
 export interface ExportTmxOptions {
   lang: string;
   /** Relative or absolute output path (default: `tm-<lang>.tmx` in project root). */
   out?: string;
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 }
 
 /**
