@@ -1,6 +1,6 @@
 {
   "name": "polygit",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Local-first CLI for assisted translation with translation memory, glossary propagation, Git integration, and LLM providers.",
   "license": "MIT",
   "author": "Marina Camacho",
@@ -28,7 +28,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "polygit": "./dist/cli.js"
+    "polygit": "dist/cli.js"
   },
   "exports": {
     ".": {
