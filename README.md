@@ -44,7 +44,7 @@ polygit fits anywhere translations should live **next to the source, in Git**, b
 | **Lower LLM cost on changing content** | Exact translation-memory hits are reused; only new text goes to the LLM | `translate <lang>` |
 | **More languages later** | Status is tracked per language, so adding `es` after `fr` costs nothing extra to set up | `translate es` |
 
-> **Current limits:** Markdown and JSON i18n only. Complex Markdown (tables, lists, front matter) is not yet segmented structurally, so review those files carefully. Always approve output in `review` before publishing.
+> **Current limits:** Supported formats are Markdown, JSON i18n, Gettext PO, YAML i18n, and XLIFF 1.2. Complex Markdown (tables, lists, front matter) is segmented best-effort — review those files carefully. Always approve output in `review` before publishing.
 
 The walkthroughs below cover the most common flows end to end.
 
