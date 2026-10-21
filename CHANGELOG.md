@@ -2,11 +2,15 @@
 
 ## Unreleased
 
+## 1.2.3
+
 - `review`: interactive `A` / `aa` / `all` approves the current segment and all remaining with a TARGET
 - `review --approve-all`: bulk-approve without a TTY prompt
 - `translate` / `review`: on `main`/`master`, auto-create `polygit/translate-<lang>-YYYYMMDD` for translation work
 - `publish`: reuse that branch and open a PR/MR to main when translations are approved
 - `translate` / `review` `--no-branch` to opt out
+- Docs: rewrite README (hook + features); full flags in `COMMANDS.md`
+- CI: expand test files with `find`; drop flaky coverage reporter on Node 20
 
 ## 1.2.2
 
