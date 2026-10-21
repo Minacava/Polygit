@@ -25,7 +25,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test with coverage
-        # Expand the file list with find: quoted globs like 'test/**/*.test.js'
-        # are not expanded on Linux Node 20 in Actions (works on macOS Node 22).
-        run: npm run build && node --test --experimental-test-coverage $(find test -name '*.test.js' | sort)
+      - name: Test
+        # List files with find: quoted 'test/**/*.test.js' is not expanded on
+        # Linux Node 20 in Actions. Skip --experimental-test-coverage here —
+        # on Node 20 it can exit 1 after all tests pass (coverage reporter bug).
+        run: npm test
