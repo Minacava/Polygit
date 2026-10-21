@@ -1,17 +1,19 @@
 # Changelog
 
+## 1.2.1
+
+Publishes the current `main` branch to npm. Use this instead of `1.2.0` on the registry.
+
+Highlights (included in this tarball):
+
+- Gettext PO, YAML i18n, and XLIFF 1.2 parsers (`--format=po|yaml|xliff`)
+- `check` gate for pre-publish validation
+- `export-tmx` to export translation memory as TMX 1.4
+- Security/correctness fixes from the 1.1.1 line
+
 ## 1.2.0
 
-Feature release on top of 1.1.1.
-
-Highlights:
-
-- Add Gettext PO, YAML i18n, and XLIFF 1.2 parsers (`--format=po|yaml|xliff`)
-- Add `check` gate for pre-publish validation
-- Add `export-tmx` to export translation memory as TMX 1.4
-- Align package version with the npm `1.2.0` release line
-
-See the GitHub release notes and merged pull requests for details.
+Version bump that landed on npm from an older commit (Markdown/JSON only). Prefer **1.2.1**.
 
 ## 1.1.1
 
