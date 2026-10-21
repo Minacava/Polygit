@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `hooks install`: pre-commit resolves `./node_modules/.bin/polygit`, then PATH, then `npx --no-install`; clear error if missing; refuse-overwrite exits non-zero
+- `check`: print the failure summary once (no duplicated `Error:` line)
+- `check` / `sync`: skip symlinks under contentRoots with `skipped symlink: …` (do not fail the gate)
 - `sync`: import NEW/CHANGED sources and translate them; translations stay unapproved (publish still requires review)
 - `hooks install`: opt-in pre-commit via `git rev-parse --git-path hooks` (mode 0755) running only `polygit check`; never overwrites; never runs sync
 - Docs: GitHub Actions example running `polygit check` on pull requests

@@ -93,13 +93,17 @@ export function scanContentDrift(
 
   const changedFiles: string[] = [];
   for (const doc of docs) {
-    const abs = (() => {
-      try {
-        return resolveInsideProject(projectRoot, doc.path);
-      } catch {
-        return null;
+    let abs: string | null = null;
+    try {
+      abs = resolveInsideProject(projectRoot, doc.path);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/symlink/i.test(message)) {
+        console.warn(`skipped symlink: ${doc.path}`);
+        continue;
       }
-    })();
+      abs = null;
+    }
     if (!abs || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
       changedFiles.push(doc.path);
       continue;
@@ -235,7 +239,10 @@ export function runCheck(options: CheckOptions = {}): CheckResult {
 
     if (!ok) {
       const err = new Error(formatHumanFailure(result));
-      (err as Error & { checkResult?: CheckResult }).checkResult = result;
+      (err as Error & { checkResult?: CheckResult; alreadyPrinted?: boolean }).checkResult =
+        result;
+      // Avoid "Error: …" duplicating the same summary on stderr (CLI respects this).
+      (err as Error & { alreadyPrinted?: boolean }).alreadyPrinted = !options.quiet;
       throw err;
     }
 
