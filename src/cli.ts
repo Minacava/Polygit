@@ -148,11 +148,22 @@ program
   .requiredOption("--lang <lang>", "Language to review")
   .option("--status <status>", "pending | translated | stale | approved")
   .option(
+    "--approve-all",
+    "Approve every listed segment that already has a TARGET (no interactive prompt)",
+    false,
+  )
+  .option(
     "--no-branch",
     "Do not auto-create/checkout polygit/translate-<lang>-… when on main/master",
     false,
   )
-  .action(async (opts: { lang?: string; status?: string; branch?: boolean }) => {
+  .action(
+    async (opts: {
+      lang?: string;
+      status?: string;
+      approveAll?: boolean;
+      branch?: boolean;
+    }) => {
     const status = opts.status as SegmentStatus | undefined;
     if (
       status &&
@@ -166,9 +177,11 @@ program
     await runReview({
       ...(opts.lang ? { lang: opts.lang } : {}),
       ...(status ? { status } : {}),
+      approveAll: Boolean(opts.approveAll),
       noBranch: opts.branch === false,
     });
-  });
+  },
+  );
 
 program
   .command("commit")

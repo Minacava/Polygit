@@ -13,12 +13,13 @@ import { ensureTranslationBranch } from "../git/translation-branch.js";
 
 /** Shown once at the start of an interactive review session. */
 export const REVIEW_KEY_TABLE = [
-  "Key  Action    Meaning",
-  "───  ────────  ──────────────────────────────────────────",
-  " a   approve   Keep the current TARGET and mark approved",
-  " e   edit      Type a new TARGET, then save + approve",
-  " s   skip      Leave this segment unchanged (Enter = skip)",
-  " q   quit      Stop the review session",
+  "Key  Action       Meaning",
+  "───  ───────────  ──────────────────────────────────────────",
+  " a   approve      Keep the current TARGET and mark approved",
+  " A   approve-all  Approve this and all remaining with a TARGET",
+  " e   edit         Type a new TARGET, then save + approve",
+  " s   skip         Leave this segment unchanged (Enter = skip)",
+  " q   quit         Stop the review session",
 ].join("\n");
 
 export interface ReviewOptions {
@@ -26,6 +27,22 @@ export interface ReviewOptions {
   status?: SegmentStatus;
   /** Skip auto branch for translation work (see translate --no-branch). */
   noBranch?: boolean;
+  /** Approve every listed segment that already has a TARGET (no TTY). */
+  approveAll?: boolean;
+}
+
+function tryApproveSegment(
+  db: ReturnType<typeof openProjectDb>,
+  segmentId: string,
+  lang: string,
+  targetText: string | null | undefined,
+  touchedDocs: Set<string>,
+  documentPath: string,
+): boolean {
+  if (!targetText) return false;
+  upsertTranslation(db, segmentId, lang, targetText, "manual", true);
+  touchedDocs.add(documentPath);
+  return true;
 }
 
 export async function runReview(options: ReviewOptions = {}): Promise<void> {
@@ -40,8 +57,8 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
     await ensureTranslationBranch(root, options.lang);
   }
   const db = openProjectDb(root);
-  const rl = readline.createInterface({ input, output });
   const touchedDocs = new Set<string>();
+  const lang = options.lang;
 
   try {
     const rows = listReviewSegments(db, {
@@ -54,59 +71,112 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
       return;
     }
 
-    if (!process.stdin.isTTY) {
-      throw new Error("Interactive review requires a TTY.");
-    }
-
-    console.log(`Reviewing ${rows.length} segment(s).\n`);
-    console.log(REVIEW_KEY_TABLE);
-    console.log("");
-
-    for (const row of rows) {
-      console.log(`── ${row.document_path}  (${row.status})`);
-      console.log(`SOURCE: ${row.source_text}`);
-      console.log(`TARGET: ${row.target_text ?? "(none)"}`);
-
-      const answer = (await rl.question("Action [a/e/s/q] > ")).trim().toLowerCase();
-      if (answer === "q") break;
-      if (answer === "s" || answer === "") continue;
-
-            if (answer === "a") {
-        if (!row.target_text) {
-          console.log("No translation to approve.");
-          continue;
+    if (options.approveAll) {
+      let approved = 0;
+      let skipped = 0;
+      for (const row of rows) {
+        if (tryApproveSegment(db, row.id, lang, row.target_text, touchedDocs, row.document_path)) {
+          approved += 1;
+        } else {
+          skipped += 1;
         }
-        upsertTranslation(db, row.id, options.lang, row.target_text, "manual", true);
-        touchedDocs.add(row.document_path);
-        console.log("Approved.\n");
-        continue;
+      }
+      console.log(
+        `Approved ${approved} segment(s)` +
+          (skipped > 0 ? ` (skipped ${skipped} without TARGET)` : "") +
+          ".",
+      );
+    } else {
+      if (!process.stdin.isTTY) {
+        throw new Error(
+          "Interactive review requires a TTY. Use --approve-all to approve without a prompt.",
+        );
       }
 
-      if (answer === "e") {
-        const edited = await rl.question("New translation > ");
-        if (!edited.trim()) {
-          console.log("Empty edit ignored.\n");
-          continue;
+      const rl = readline.createInterface({ input, output });
+      try {
+        console.log(`Reviewing ${rows.length} segment(s).\n`);
+        console.log(REVIEW_KEY_TABLE);
+        console.log("");
+
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i]!;
+          console.log(`── ${row.document_path}  (${row.status})`);
+          console.log(`SOURCE: ${row.source_text}`);
+          console.log(`TARGET: ${row.target_text ?? "(none)"}`);
+
+          // Keep case: `A` = approve-all; `a` = approve one.
+          const raw = (await rl.question("Action [a/A/e/s/q] > ")).trim();
+          const answer = raw.toLowerCase();
+
+          if (answer === "q") break;
+          if (answer === "s" || answer === "") continue;
+
+          if (raw === "A" || answer === "aa" || answer === "all") {
+            let bulk = 0;
+            let skipped = 0;
+            for (let j = i; j < rows.length; j++) {
+              const next = rows[j]!;
+              if (
+                tryApproveSegment(
+                  db,
+                  next.id,
+                  lang,
+                  next.target_text,
+                  touchedDocs,
+                  next.document_path,
+                )
+              ) {
+                bulk += 1;
+              } else {
+                skipped += 1;
+              }
+            }
+            console.log(
+              `Approved ${bulk} remaining segment(s)` +
+                (skipped > 0 ? ` (skipped ${skipped} without TARGET)` : "") +
+                ".\n",
+            );
+            break;
+          }
+
+          if (answer === "a") {
+            if (!tryApproveSegment(db, row.id, lang, row.target_text, touchedDocs, row.document_path)) {
+              console.log("No translation to approve.");
+              continue;
+            }
+            console.log("Approved.\n");
+            continue;
+          }
+
+          if (answer === "e") {
+            const edited = await rl.question("New translation > ");
+            if (!edited.trim()) {
+              console.log("Empty edit ignored.\n");
+              continue;
+            }
+            upsertTranslation(db, row.id, lang, edited.trim(), "manual", true);
+            touchedDocs.add(row.document_path);
+            console.log("Saved and approved.\n");
+          }
         }
-        upsertTranslation(db, row.id, options.lang, edited.trim(), "manual", true);
-        touchedDocs.add(row.document_path);
-        console.log("Saved and approved.\n");
+      } finally {
+        rl.close();
       }
     }
 
-    if (options.lang && touchedDocs.size > 0) {
-      const written = writeOutputDocuments(db, root, options.lang, [...touchedDocs]);
+    if (touchedDocs.size > 0) {
+      const written = writeOutputDocuments(db, root, lang, [...touchedDocs]);
       console.log(`Updated outputs: ${written.join(", ")}`);
     }
 
-    if (countUnapprovedTranslations(db, options.lang) === 0) {
+    if (countUnapprovedTranslations(db, lang) === 0) {
       console.log(
-        `\nAll ${options.lang} translations are approved. Open a PR to main with:\n` +
-          `  polygit publish --lang=${options.lang} --yes\n`,
+        `\nAll ${lang} translations are approved. Open a PR to main with:\n` +
+          `  polygit publish --lang=${lang} --yes\n`,
       );
     }
   } finally {
-    rl.close();
     db.close();
   }
 }
