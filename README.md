@@ -249,11 +249,12 @@ polygit glossary sync --lang=fr --auto-retranslate
 
 Interactively approve or edit translations. Writes approved text back to output files. `--lang` is required.
 
-At the start of the session polygit prints this key table (and the prompt is `Action [a/e/s/q] >`):
+At the start of the session polygit prints this key table (and the prompt is `Action [a/A/e/s/q] >`):
 
 | Key | Action | Meaning |
 | --- | --- | --- |
 | `a` | approve | Keep the current TARGET and mark it approved |
+| `A` | approve-all | Approve this and all remaining segments that have a TARGET (`aa` / `all` also work) |
 | `e` | edit | Type a new TARGET, then save and approve |
 | `s` | skip | Leave this segment unchanged (Enter also skips) |
 | `q` | quit | Stop the review session |
@@ -262,12 +263,14 @@ At the start of the session polygit prints this key table (and the prompt is `Ac
 polygit review --lang=fr
 polygit review --lang=fr --status=translated
 polygit review --lang=fr --status=stale
+polygit review --lang=fr --approve-all
 ```
 
 | Flag | Description |
 | --- | --- |
 | `--lang <lang>` | Language to review (**required**) |
 | `--status <s>` | Filter: `pending` \| `translated` \| `stale` \| `approved` |
+| `--approve-all` | Approve every listed segment that already has a TARGET (no interactive prompt) |
 | `--no-branch` | Do not auto-create/checkout `polygit/translate-<lang>-…` when on main/master |
 
 When no unapproved segments remain, review prints a reminder to run `polygit publish --lang=<lang> --yes` (opens a PR to main).
