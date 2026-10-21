@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `review`: interactive `A` / `aa` / `all` approves the current segment and all remaining with a TARGET
+- `review --approve-all`: bulk-approve without a TTY prompt
 - `translate` / `review`: on `main`/`master`, auto-create `polygit/translate-<lang>-YYYYMMDD` for translation work
 - `publish`: reuse that branch and open a PR/MR to main when translations are approved
 - `translate` / `review` `--no-branch` to opt out

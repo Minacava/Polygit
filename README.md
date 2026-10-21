@@ -1,35 +1,47 @@
 # polygit
 
 [![npm version](https://img.shields.io/npm/v/polygit.svg)](https://www.npmjs.com/package/polygit)
+[![Node.js](https://img.shields.io/node/v/polygit.svg)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Local-first CLI for assisted translation.**
+**Translate your docs and i18n files with an LLM, without leaving Git, and without paying twice for the same sentence.**
 
-Keep sources and translations in Git. Reuse a translation memory. Enforce a glossary. Call an LLM only when the TM misses — **Claude**, **OpenAI**, **Ollama (local)**, or **Hugging Face**.
+polygit is a local-first CLI for translating content. It keeps a translation memory and a glossary in a local SQLite file, and it only calls an LLM (**Claude**, **OpenAI**, **Hugging Face**, or **Ollama** on your machine) when the memory has no match. You approve every segment in the terminal, then polygit opens a **GitHub PR** or **GitLab MR** so your team can review it.
 
-Translate on your machine → approve in the terminal → open a **GitHub PR** or **GitLab MR** for remote review.
+```bash
+npx polygit init
+npx polygit import sources/intro.md --format=markdown
+npx polygit translate fr        # TM first, LLM only for new text
+npx polygit review --lang=fr    # approve / edit / skip, segment by segment
+npx polygit publish --lang=fr --yes   # push + open a PR/MR
+```
 
-## Index
+## Why polygit?
 
-1. [Install](#install)
-2. [Use cases](#use-cases)
-3. [Quick start](#quick-start)
-4. [Paste into Cursor (example)](#paste-into-cursor-example)
-5. [Command reference](#command-reference)
-   - [init](#init) · [clone](#clone) · [import](#import) · [translate](#translate)
-   - [models](#models) · [glossary](#glossary) · [review](#review)
-   - [commit](#commit) · [log](#log) · [publish](#publish)
-   - [status](#status) · [check](#check) · [export-tmx](#export-tmx)
-6. [Providers & models](#providers--models)
-7. [Configuration](#configuration)
-8. [Access & permissions](#access--permissions)
-9. [Supported formats](#supported-formats)
-10. [License](#license)
+Machine translation of docs usually ends up one of two ways. Either you paste text into a chat window and copy it back by hand, or you hook up a SaaS platform that keeps your content somewhere else. polygit takes a different approach:
 
----
+- **Your content stays in your repo.** Sources and translations are ordinary files under Git, reviewed through ordinary PRs/MRs.
+- **You don't pay for the same sentence twice.** Exact translation-memory hits are reused, so only new or changed text goes to the LLM.
+- **Terminology stays consistent.** Glossary terms go into the prompt, and when you change a term, the segments that use it are marked stale.
+- **You can run it fully offline.** With Ollama, nothing leaves your machine — useful for unpublished research or internal docs.
+- **A human approves every segment.** `publish` refuses to open a PR until every segment for that language is approved.
 
-## Install
+## Features
 
-Published on npm: [polygit](https://www.npmjs.com/package/polygit)
+- **Translation memory** — exact matches are reused automatically. Fuzzy matches (≥ 85% similarity) can be applied as unapproved drafts with `--accept-fuzzy`.
+- **Glossary** — `glossary add` stores preferred terms per language; `glossary sync` marks affected segments stale (optional `--auto-retranslate`).
+- **Edits survive** — segments have stable IDs, so a small source edit keeps its old translation and marks it stale instead of throwing it away.
+- **Placeholder safety** — `{{name}}`, `{name}`, `%s` / `%1$s`, HTML tags, and Markdown links/images are checked after every LLM call. If one goes missing, polygit retries; if still missing, the segment is left unapproved and flagged.
+- **4 LLM providers** — `claude`, `openai`, `ollama` (local), `huggingface`, selectable per project or per command.
+- **5 formats** — Markdown, JSON i18n, Gettext PO, YAML i18n, XLIFF 1.2.
+- **Framework presets** — `--preset=vitepress`, `docusaurus`, `json-i18n`.
+- **Git workflow** — interactive terminal review, scoped `commit` (never stages `.tm/` or `.env`), optional LLM-drafted commit message (`commit --ai`), and `publish` to open a GitHub PR or GitLab MR.
+- **CI gate** — `polygit check --lang=fr` exits non-zero while any segment is pending or stale.
+- **Portable memory** — `export-tmx` writes your translation memory as TMX 1.4.
+
+## Quick start
+
+Requires **Node.js 20+**. Published on npm as [polygit](https://www.npmjs.com/package/polygit).
 
 ```bash
 # Project-local (recommended)
@@ -41,52 +53,28 @@ npm install -g polygit
 polygit --help
 ```
 
-Requires **Node.js 20+**.
-
----
-
-## Use cases
-
-polygit fits anywhere translations should live **next to the source, in Git**, be reviewed by a human, and avoid paying an LLM twice for the same sentence.
-
-| Scenario | Why polygit fits | Setup |
-| --- | --- | --- |
-| **Documentation sites** (VitePress, Docusaurus, plain Markdown) | Presets map your `docs/` tree; translations land where the framework expects them | `init --preset=vitepress` |
-| **App UI strings** (JSON i18n files) | Every string leaf is a segment; keys and structure are preserved | `init --preset=json-i18n` |
-| **Scientific & academic writing** (papers, abstracts, lab protocols, grant summaries) | Keep drafts in Git; lock domain terms in the glossary; run Ollama locally so unpublished work never leaves the lab | `glossary add` + `models use ollama` → `translate` → `review` |
-| **Sensitive or internal content** | Run fully local with Ollama — nothing leaves your machine | `models use ollama <tag>` |
-| **Contributing translations upstream** | Clone your fork, translate, approve, open a PR/MR in one flow | `clone` → `publish` |
-| **Consistent product terminology** | Glossary terms are injected into prompts; changing a term marks affected segments stale | `glossary add` / `sync` |
-| **Lower LLM cost on changing content** | Exact translation-memory hits are reused; only new text goes to the LLM | `translate <lang>` |
-
-> **Current limits:** Supported formats are Markdown, JSON i18n, Gettext PO, YAML i18n, and XLIFF 1.2. Complex Markdown (tables, lists, front matter) is segmented best-effort — review those files carefully. Always approve output in `review` before publishing.
-
----
-
-## Quick start
-
-### Private, offline translation (Ollama)
+### Private, offline translation with Ollama
 
 ```bash
-ollama pull llama3.2 && ollama serve   # if needed
+ollama pull llama3.2 && ollama serve   # if not already running
 
 mkdir my-docs && cd my-docs
 npx polygit init
-mkdir -p sources && cp /path/to/intro.md sources/intro.md
+cp /path/to/intro.md sources/intro.md
 
 npx polygit import sources/intro.md --format=markdown
 npx polygit models use ollama llama3.2
-npx polygit translate fr          # on main → creates polygit/translate-fr-YYYYMMDD
-npx polygit review --lang=fr      # approve; then hints to publish
-npx polygit publish --lang=fr --yes   # push branch + open PR to main
+npx polygit translate fr
+npx polygit review --lang=fr
+npx polygit publish --lang=fr --yes    # needs a remote + GITHUB_TOKEN / GITLAB_TOKEN
 npx polygit log --stat
 ```
 
-`translate` / `review` auto-create a **`polygit/translate-<lang>-YYYYMMDD`** branch when you are on `main`/`master`, so translation work stays off the default branch. When everything is approved, `publish` pushes that branch and opens a **PR/MR into main**. Use `--no-branch` to stay on `main` if you really want to.
+`init` creates `.tmconfig.json`, `sources/`, `outputs/`, `.tm/` (SQLite), `.gitignore`, and `.env.example`. Copy `.env.example` → `.env` only if you use cloud LLM keys or forge tokens.
 
-`init` creates `.tmconfig.json`, `sources/`, `outputs/`, `.tm/`, `.gitignore`, and `.env.example`. Copy `.env.example` → `.env` only if you add cloud keys or forge tokens.
+> **On main?** The current `main` branch (unreleased on npm — see [CHANGELOG](CHANGELOG.md)) has `translate` / `review` automatically create a `polygit/translate-<lang>-YYYYMMDD` branch when you're on `main`/`master`, so translation work never lands on the default branch. `publish` then reuses that branch. Pass `--no-branch` to opt out.
 
-### Contribute upstream (PR / MR)
+### Contribute translations upstream
 
 ```bash
 npx polygit clone https://github.com/YOU/docs.git
@@ -98,293 +86,74 @@ npx polygit translate fr && npx polygit review --lang=fr
 npx polygit publish --lang=fr --yes
 ```
 
-### Second language
+### Add another language
 
-Work is **per language**. After `fr` you can run `translate es` / `review --lang=es` without re-init. Segments missing `es` (or marked stale) are translated again.
+Work is tracked per language. After `fr`, run `translate es` and `review --lang=es` without running `init` again.
 
----
+## Use cases
 
-## Paste into Cursor (example)
+| Scenario | Why polygit fits | Setup |
+| --- | --- | --- |
+| **Documentation sites** (VitePress, Docusaurus, plain Markdown) | Presets map your `docs/` tree; translations land where the framework expects them | `init --preset=vitepress` |
+| **App UI strings** (JSON i18n) | Every string leaf is a segment; keys and structure are preserved | `init --preset=json-i18n` |
+| **Scientific & academic writing** | Lock domain terms in the glossary; run Ollama locally so unpublished work never leaves the lab | `glossary add` + `models use ollama` |
+| **Sensitive or internal content** | Fully local with Ollama | `models use ollama <tag>` |
+| **Contributing translations upstream** | Clone a fork, translate, approve, open a PR/MR in one flow | `clone` → `publish` |
+| **Content that keeps changing** | Exact TM hits are reused; only new text costs LLM calls | `translate <lang>` |
 
-Copy the block below into a **Cursor Agent** chat in your project. Change `es` (or `fr` / `ca`) and the model if you want. The agent should install polygit locally, put your README under `sources/`, import, translate, and leave outputs ready for review.
-
-````md
-Use polygit in this repo to translate the project README.
-
-1. If needed: `npm install -D polygit@latest` (Node 20+).
-2. Run `npx polygit init` if `.tmconfig.json` is missing.
-3. Ensure Ollama is running (`ollama serve`) and a model is available, e.g. `ollama pull llama3.2`.
-4. Create `sources/` if needed and copy the root `README.md` to `sources/readme.md`
-   (do not invent content — use the real README).
-5. Run:
-   - `npx polygit import sources/readme.md --format=markdown`
-   - `npx polygit models use ollama llama3.2`
-   - `npx polygit translate es`
-6. Show me `npx polygit status --lang=es` and list files under `outputs/es/`.
-7. Do **not** run `review` or `commit` unless I ask — leave translations for me to approve.
-
-If Ollama is unavailable, stop and tell me how to set `HF_TOKEN` / `ANTHROPIC_API_KEY` instead.
-````
-
-Optional follow-up after you like the draft:
-
-```text
-Run npx polygit review --lang=es interactively is not needed —
-instead summarize what changed in outputs/es/readme.md,
-then npx polygit commit --ai --yes and npx polygit log --stat.
-```
-
----
-
-## Command reference
-
-Jump: [init](#init) · [clone](#clone) · [import](#import) · [translate](#translate) · [models](#models) · [glossary](#glossary) · [review](#review) · [commit](#commit) · [log](#log) · [publish](#publish) · [status](#status) · [check](#check) · [export-tmx](#export-tmx)
-
-### `init`
-
-Create a polygit project in the current directory.
+## Usage examples
 
 ```bash
-polygit init
-polygit init --preset=vitepress      # docs/ + in-place-locale
-polygit init --preset=docusaurus
-polygit init --preset=json-i18n      # locales/ + in-place-locale
-```
+# See what would happen, with no writes and no LLM calls
+polygit translate fr --dry-run
 
-| Flag | Description |
-| --- | --- |
-| `--preset <name>` | Layout preset: `vitepress` \| `docusaurus` \| `json-i18n`. Default: `sources/` → `outputs/<lang>/` mirror |
+# Translate one document with a one-off provider/model
+polygit translate fr --doc=sources/intro.md --provider=ollama --model=mistral
 
-Creates: `.tmconfig.json`, content dirs, `.tm/db.sqlite`, `.gitignore`, `.env.example`.
+# Lock terminology, then re-translate what it affects
+polygit glossary add "Sign in" "Se connecter" --lang=fr
+polygit glossary sync --lang=fr --auto-retranslate
 
-### `clone`
-
-Clone a GitHub/GitLab repo and run `init` (unless disabled).
-
-```bash
-polygit clone https://github.com/YOU/docs.git
-polygit clone git@gitlab.com:org/docs.git --dir=./docs
-polygit clone https://github.com/YOU/docs.git --no-init
-```
-
-| Flag | Description |
-| --- | --- |
-| `--dir <path>` | Target directory (default: repo name) |
-| `--no-init` | Skip `polygit init` after clone |
-
-### `import`
-
-Import files into the translation DB as pending segments.
-
-```bash
-polygit import sources/intro.md --format=markdown
+# Import a whole tree or other formats
 polygit import "docs/**/*.md"
-polygit import --root=docs --format=markdown
 polygit import sources/messages.po
 polygit import locales/en.yml --format=yaml
-```
 
-| Flag / arg | Description |
-| --- | --- |
-| `<path>` | File or glob under `contentRoots` |
-| `--root <dir>` | Import all known files under this directory |
-| `--format <fmt>` | `markdown` \| `json-i18n` \| `po` \| `yaml` \| `xliff` |
-
-### `translate`
-
-Translate pending/stale segments for a language. TM exact hits first; fuzzy skips to LLM unless `--accept-fuzzy`. On a TTY, shows a progress bar for LLM segments.
-
-```bash
-polygit translate fr
-polygit translate fr --provider=ollama --model=mistral
-polygit translate fr --doc=sources/intro.md
-polygit translate fr --dry-run
-polygit translate fr --accept-fuzzy
-```
-
-| Flag / arg | Description |
-| --- | --- |
-| `<lang>` | Target language code (`fr`, `es`, `ca`, …) |
-| `--doc <path>` | Limit to one source document |
-| `--provider <name>` | `claude` \| `openai` \| `ollama` \| `huggingface` |
-| `--model <id>` | One-off model override |
-| `--dry-run` | Plan only — no writes, no LLM calls |
-| `--accept-fuzzy` | Apply fuzzy TM as unapproved drafts (skip LLM) |
-| `--no-branch` | Do not auto-create/checkout `polygit/translate-<lang>-…` when on main/master |
-
-### `models`
-
-List and select LLM models (saved in `.tmconfig.json`).
-
-```bash
-polygit models list
-polygit models list --provider=ollama
-polygit models use ollama llama3.2
-polygit models use claude claude-haiku-4-5
-polygit models use huggingface BSC-LT/salamandra-7b-instruct
-```
-
-| Subcommand | Description |
-| --- | --- |
-| `list [--provider=…]` | Show effective models (+ local Ollama tags) |
-| `use <provider> <model>` | Save model **and** set `defaultProvider` |
-
-### `glossary`
-
-Preferred terminology injected into LLM prompts. Sync marks matching segments stale.
-
-```bash
-polygit glossary add "Sign in" "Se connecter" --lang=fr
-polygit glossary add "API key" "clé API" --lang=fr --note="product term"
-polygit glossary sync --lang=fr
-polygit glossary sync --lang=fr --auto-retranslate
-```
-
-| Subcommand | Flags | Description |
-| --- | --- | --- |
-| `add <source> <target>` | `--lang` (required), `--note` | Add/update a term |
-| `sync` | `--lang`, `--auto-retranslate` | Mark glossary-linked segments stale; optionally retranslate |
-
-### `review`
-
-Interactively approve or edit translations. Writes approved text back to output files. `--lang` is required.
-
-At the start of the session polygit prints this key table (and the prompt is `Action [a/e/s/q] >`):
-
-| Key | Action | Meaning |
-| --- | --- | --- |
-| `a` | approve | Keep the current TARGET and mark it approved |
-| `e` | edit | Type a new TARGET, then save and approve |
-| `s` | skip | Leave this segment unchanged (Enter also skips) |
-| `q` | quit | Stop the review session |
-
-```bash
-polygit review --lang=fr
-polygit review --lang=fr --status=translated
+# Review only stale segments
 polygit review --lang=fr --status=stale
-```
 
-| Flag | Description |
-| --- | --- |
-| `--lang <lang>` | Language to review (**required**) |
-| `--status <s>` | Filter: `pending` \| `translated` \| `stale` \| `approved` |
-| `--no-branch` | Do not auto-create/checkout `polygit/translate-<lang>-…` when on main/master |
-
-When no unapproved segments remain, review prints a reminder to run `polygit publish --lang=<lang> --yes` (opens a PR to main).
-
-### `commit`
-
-Commit only configured content roots (e.g. `sources/` + `outputs/`). Never stages `.tm/` or `.env`.
-
-```bash
-# Explicit message (scripts / CI)
-polygit commit --message "translate(fr): add intro" --yes
-
-# Interactive: type a message (Enter = dated default), then confirm
-polygit commit
-
-# LLM drafts a one-line message from the diff
-polygit commit --ai
-polygit commit --ai --yes
-```
-
-| Flag | Description |
-| --- | --- |
-| `--message <msg>` | Fixed commit message |
-| `--ai` | Generate message from the diff via the configured LLM; in TTY you can accept, edit (`e`), or decline |
-| `--yes` | Skip “Proceed?” confirmation (required when stdin is not a TTY) |
-
-| Mode | When to use |
-| --- | --- |
-| `--message` + `--yes` | You already know the message |
-| Interactive `commit` | You want to type/review the message |
-| `--ai` | Let the model draft `translate(fr): …` from the diff |
-
-### `log`
-
-Show recent Git commits that touch translation roots.
-
-```bash
-polygit log
-polygit log --stat
-polygit log --limit 10
-polygit log --grep-translate
-```
-
-| Flag | Description |
-| --- | --- |
-| `--limit <n>` | Max commits (default `20`) |
-| `--stat` | List files changed in each commit |
-| `--grep-translate` | Also include commits whose subject matches `translate:` / `translate(` |
-
-### `publish`
-
-After local approval: commit (if needed) → push the translation branch → open a **GitHub PR or GitLab MR into main** (or `--target-branch`).
-
-If you already ran `translate`/`review` on `polygit/translate-<lang>-…`, publish reuses that branch instead of creating a second one.
-
-```bash
-polygit publish --lang=fr --yes
-polygit publish --lang=fr --draft --yes
-polygit publish --lang=fr --forge=gitlab --yes
-polygit publish --lang=fr --title="French docs" --body="…" --yes
-polygit publish --lang=fr --allow-unapproved   # not recommended
-```
-
-| Flag | Description |
-| --- | --- |
-| `--lang <lang>` | Language being published (**required**) |
-| `--forge <kind>` | `github` \| `gitlab` (required for Enterprise/self-hosted) |
-| `--confirm-forge-host` | Allow tokens to a non-github.com / non-gitlab.com host |
-| `--branch <name>` | Source branch to push |
-| `--target-branch <name>` | Base branch for the PR/MR |
-| `--title` / `--body` | PR/MR title and description |
-| `--draft` | Open as draft |
-| `--yes` | Skip commit confirmation |
-| `--allow-unapproved` | Skip the local-approval gate |
-
-**Gate:** every segment for that language must be **approved** in `review` (unless `--allow-unapproved`). Push uses your Git credentials; opening the PR/MR needs `GITHUB_TOKEN` / `GH_TOKEN` or `GITLAB_TOKEN` / `GL_TOKEN`.
-
-### `status`
-
-Show layout roots and per-document / per-language counts.
-
-```bash
-polygit status
-polygit status --lang=fr
-```
-
-| Flag | Description |
-| --- | --- |
-| `--lang <lang>` | Focus on one language |
-
-### `check`
-
-CI gate: exit non-zero if any segment is pending or stale for a language.
-
-```bash
+# Gate a CI job on complete translations
 polygit check --lang=fr
-```
 
-| Flag | Description |
-| --- | --- |
-| `--lang <lang>` | Language to check (**required**) |
+# Commit with an LLM-drafted message, open a draft PR
+polygit commit --ai --yes
+polygit publish --lang=fr --draft --yes
 
-### `export-tmx`
-
-Export translation memory as TMX 1.4.
-
-```bash
-polygit export-tmx --lang=fr
+# Export your translation memory
 polygit export-tmx --lang=fr --out=tm-fr.tmx
 ```
 
-| Flag | Description |
-| --- | --- |
-| `--lang <lang>` | Target language (**required**) |
-| `--out <path>` | Output file (default `tm-<lang>.tmx`) |
+In `review`, each segment shows SOURCE and TARGET. Prompt: `Action [a/A/e/s/q] >` — **a** approve, **A** approve-all remaining with a TARGET, **e** edit, **s** skip (Enter also skips), **q** quit. Use `--approve-all` to bulk-approve without a prompt.
 
----
+## Command reference
+
+| Command | What it does |
+| --- | --- |
+| `init` | Create `.tmconfig.json`, content dirs, and the local SQLite DB |
+| `clone` | Clone a GitHub/GitLab repo and run `init` |
+| `import` | Import files/globs into pending segments |
+| `translate` | Translate pending/stale segments (TM first, then LLM) |
+| `models` | List and select LLM models |
+| `glossary` | Add terms and sync affected segments |
+| `review` | Interactively approve or edit translations |
+| `commit` | Commit only content roots, with an optional AI-drafted message |
+| `log` | Show recent translation commits |
+| `publish` | Push and open a GitHub PR / GitLab MR |
+| `status` | Per-document / per-language counts |
+| `check` | CI gate: fail on pending or stale segments |
+| `export-tmx` | Export the TM as TMX 1.4 |
+
+Full flags and examples for every command: **[COMMANDS.md](COMMANDS.md)**.
 
 ## Providers & models
 
@@ -395,17 +164,15 @@ polygit export-tmx --lang=fr --out=tm-fr.tmx
 | `ollama` | none (local) | `llama3.2` (or the only installed tag) |
 | `huggingface` | `HF_TOKEN` | `meta-llama/Meta-Llama-3-8B-Instruct` |
 
-**How polygit chooses a model**
+polygit picks the model in this order:
 
-1. `--model` on the command  
-2. `.tmconfig.json` → `models.<provider>` (from `models use`)  
-3. Env `POLYGIT_CLAUDE_MODEL` / `POLYGIT_OPENAI_MODEL` / `POLYGIT_OLLAMA_MODEL` / `POLYGIT_HF_MODEL`  
-4. Ollama: auto-pick if exactly one local model; interactive picker if several  
-5. Built-in default  
+1. `--model` on the command
+2. `.tmconfig.json` → `models.<provider>` (set by `models use`)
+3. Env `POLYGIT_CLAUDE_MODEL` / `POLYGIT_OPENAI_MODEL` / `POLYGIT_OLLAMA_MODEL` / `POLYGIT_HF_MODEL`
+4. Ollama: auto-pick if exactly one local model is installed; interactive picker if several
+5. Built-in default
 
-Untagged Ollama ids (e.g. `llama3.2`) match tagged installs (e.g. `llama3.2:latest`).
-
----
+Untagged Ollama IDs (e.g. `llama3.2`) match tagged installs (e.g. `llama3.2:latest`).
 
 ## Configuration
 
@@ -419,27 +186,19 @@ Untagged Ollama ids (e.g. `llama3.2`) match tagged installs (e.g. `llama3.2:late
   "outputMode": "mirror",
   "outputRoot": "outputs",
   "defaultProvider": "ollama",
-  "models": {
-    "ollama": "llama3.2"
-  }
+  "models": { "ollama": "llama3.2" }
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `contentRoots` | Where source files live (default `["sources"]`) |
-| `outputMode` | How translations are written (see below) |
-| `outputRoot` | Used when `outputMode` is `mirror` (default `outputs`) |
-
-| `outputMode` | Example for `docs/getting-started.md` → `fr` |
+| `outputMode` | `docs/getting-started.md` → `fr` |
 | --- | --- |
 | `mirror` | `locales/fr/getting-started.md` (with `"outputRoot": "locales"`) |
 | `sidecar` | `docs/getting-started.fr.md` |
 | `in-place-locale` | `docs/fr/getting-started.md` |
 
-Paths outside `contentRoots` fail with a clear error — add the folder to config or pass `--root`.
+Paths outside `contentRoots` fail with a clear error. Add the folder to the config or pass `--root`.
 
-### `.env` (from `.env.example`)
+### `.env`
 
 ```bash
 ANTHROPIC_API_KEY=
@@ -447,28 +206,25 @@ OPENAI_API_KEY=
 HF_TOKEN=
 # OLLAMA_HOST=http://127.0.0.1:11434
 
-GITHUB_TOKEN=
-GITLAB_TOKEN=
+GITHUB_TOKEN=   # or GH_TOKEN
+GITLAB_TOKEN=   # or GL_TOKEN
 ```
 
-**Do not commit `.env` or `.tm/`.** `init` adds them to `.gitignore`.
+Never commit `.env` or `.tm/`. `init` adds both to `.gitignore`.
 
----
+## Access & security
 
-## Access & permissions
-
-polygit does **not** log you into GitHub/GitLab. It reuses Git + a forge token.
+polygit does **not** log you into GitHub or GitLab. It reuses your Git credentials plus a forge token.
 
 | Action | What you need |
 | --- | --- |
-| `clone` public repo | Nothing special |
-| `clone` private repo | Git credentials with read access |
-| Local work | No forge account |
+| Local work / clone of a public repo | Nothing special |
+| `clone` of a private repo | Git credentials with read access |
 | `publish` | Git push access **and** `GITHUB_TOKEN` or `GITLAB_TOKEN` |
 
-Only **github.com** and **gitlab.com** are trusted automatically for forge API tokens. Enterprise or self-hosted remotes require `--forge=github|gitlab` and either `--confirm-forge-host` or a `forgeHosts` entry in `.tmconfig.json`. API calls always use HTTPS.
+Forge tokens are only sent to **github.com** and **gitlab.com** automatically. Enterprise or self-hosted remotes need `--forge=github|gitlab` plus either `--confirm-forge-host` or a `forgeHosts` entry in `.tmconfig.json`. API calls always use HTTPS, and secrets are redacted from error output.
 
----
+Found a vulnerability? Please report it privately. See [SECURITY.md](SECURITY.md).
 
 ## Supported formats
 
@@ -480,8 +236,50 @@ Only **github.com** and **gitlab.com** are trusted automatically for forge API t
 | YAML i18n (`key: value`) | `--format=yaml` (`.yaml`, `.yml`) |
 | XLIFF 1.2 | `--format=xliff` (`.xliff`, `.xlf`) |
 
----
+> **Current limits:** Complex Markdown (tables, lists, front matter) is segmented best-effort — review those files carefully. Always approve output in `review` before publishing.
 
-## License
+## Using polygit with an AI coding agent
 
-[MIT](LICENSE) © Marina Camacho
+Paste something like this into a **Cursor Agent** (or similar) chat:
+
+````md
+Use polygit in this repo to translate the project README.
+
+1. If needed: `npm install -D polygit@latest` (Node 20+).
+2. Run `npx polygit init` if `.tmconfig.json` is missing.
+3. Ensure Ollama is running (`ollama serve`) with a model, e.g. `ollama pull llama3.2`.
+4. Copy the root `README.md` to `sources/readme.md` (use the real README, don't invent content).
+5. Run:
+   - `npx polygit import sources/readme.md --format=markdown`
+   - `npx polygit models use ollama llama3.2`
+   - `npx polygit translate es`
+6. Show me `npx polygit status --lang=es` and list files under `outputs/es/`.
+7. Do **not** run `review` or `commit` unless I ask. Leave translations for me to approve.
+
+If Ollama is unavailable, stop and tell me how to set `HF_TOKEN` / `ANTHROPIC_API_KEY` instead.
+````
+
+Optional follow-up after you like the draft:
+
+```text
+Summarize what changed in outputs/es/readme.md,
+then run: npx polygit commit --ai --yes && npx polygit log --stat
+```
+
+## Tech stack
+
+TypeScript (ESM) on Node.js 20+, [commander](https://github.com/tj/commander.js) for the CLI, [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) for the local translation memory, [simple-git](https://github.com/steveukx/git-js) for Git, [cli-progress](https://github.com/npkgz/cli-progress), and [dotenv](https://github.com/motdotla/dotenv). Tests use the built-in `node:test` runner.
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+```bash
+git clone https://github.com/Minacava/Polygit.git
+cd Polygit
+npm ci
+npm run typecheck
+npm test          # builds with tsc, then runs node --test
+```
+
+CI runs `npm audit --omit=dev`, the typecheck, and the test suite on every PR. See [CHANGELOG.md](CHANGELOG.md) for release history.
