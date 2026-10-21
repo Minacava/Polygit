@@ -113,7 +113,10 @@ describe("hooks install", () => {
       const mode = fs.statSync(hookPath).mode & 0o777;
       assert.equal(mode, 0o755);
       const body = fs.readFileSync(hookPath, "utf8");
+      assert.match(body, /node_modules\/\.bin\/polygit/);
       assert.match(body, /polygit check/);
+      assert.match(body, /polygit was not found/);
+      assert.doesNotMatch(body, /^\s*polygit check\s*$/m);
       assert.doesNotMatch(body, /\bsync\b/);
     });
   });

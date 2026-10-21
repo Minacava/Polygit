@@ -305,6 +305,7 @@ function hasKnownExtension(filePath: string, exts: readonly string[]): boolean {
 
 /**
  * List content files under configured roots (posix relative paths).
+ * Symlinks are skipped with a warning and never followed.
  */
 export function listContentFiles(
   projectRoot: string,
@@ -313,13 +314,33 @@ export function listContentFiles(
 ): string[] {
   const out: string[] = [];
   for (const root of roots) {
-    const absRoot = resolveInsideProject(projectRoot, root);
+    let absRoot: string;
+    try {
+      absRoot = resolveInsideProject(projectRoot, root);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/symlink/i.test(message)) {
+        console.warn(`skipped symlink: ${root.replace(/\\/g, "/")}`);
+        continue;
+      }
+      throw err;
+    }
     if (!fs.existsSync(absRoot)) continue;
-    const stat = fs.statSync(absRoot);
-    if (stat.isFile()) {
+    let lstat: fs.Stats;
+    try {
+      lstat = fs.lstatSync(absRoot);
+    } catch {
+      continue;
+    }
+    if (lstat.isSymbolicLink()) {
+      console.warn(`skipped symlink: ${root.replace(/\\/g, "/")}`);
+      continue;
+    }
+    if (lstat.isFile()) {
       if (hasKnownExtension(root, exts)) out.push(root.replace(/\\/g, "/"));
       continue;
     }
+    if (!lstat.isDirectory()) continue;
     walkDir(absRoot, projectRoot, exts, out);
   }
   out.sort();
@@ -343,6 +364,10 @@ function walkDir(
       continue;
     }
     const abs = path.join(absDir, entry.name);
+    if (entry.isSymbolicLink()) {
+      console.warn(`skipped symlink: ${toPosixRelative(projectRoot, abs)}`);
+      continue;
+    }
     if (entry.isDirectory()) {
       walkDir(abs, projectRoot, exts, out);
       continue;
