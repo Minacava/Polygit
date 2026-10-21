@@ -246,6 +246,15 @@ polygit glossary sync --lang=fr --auto-retranslate
 
 Interactively approve or edit translations. Writes approved text back to output files. `--lang` is required.
 
+At the start of the session polygit prints this key table (and the prompt is `Action [a/e/s/q] >`):
+
+| Key | Action | Meaning |
+| --- | --- | --- |
+| `a` | approve | Keep the current TARGET and mark it approved |
+| `e` | edit | Type a new TARGET, then save and approve |
+| `s` | skip | Leave this segment unchanged (Enter also skips) |
+| `q` | quit | Stop the review session |
+
 ```bash
 polygit review --lang=fr
 polygit review --lang=fr --status=translated
