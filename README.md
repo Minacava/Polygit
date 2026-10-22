@@ -201,9 +201,15 @@ Untagged Ollama IDs (e.g. `llama3.2`) match tagged installs (e.g. `llama3.2:late
 
 `autoTranslate` (from `init` / `config set`) signals that you intend to run `polygit sync` in your workflow. It does not install Git hooks — use `polygit hooks install` for an opt-in pre-commit `check`.
 
-Optional `style` steers tone via fixed presets inside polygit (`academic`, `startup`, `technical`, `marketing`, `legal`) plus `formality` (`formal` \| `informal` \| `auto`). Omit `style` entirely to keep the legacy translator prompt. One-off overrides: `translate` / `sync --style=… --formality=…` (CLI wins over config). Manage with `config get|set style.preset` / `style.formality`.
+Optional `style` steers tone via fixed presets inside polygit (`academic`, `startup`, `technical`, `marketing`, `legal`) plus `formality` (`formal` \| `informal` \| `auto`) and an optional project guide file:
 
-Each translation stores a `style_hash`. Exact TM hits are reused only when the fingerprint matches the current style; changing preset/formality marks affected rows STALE (same idea as glossary sync). Projects with no `style` key are unchanged.
+```json
+"style": { "preset": "startup", "formality": "formal", "guide": "STYLE.md" }
+```
+
+The guide is untrusted repo text: read only inside the project (no symlinks), `.md` / `.txt` only, max 8 KB, wrapped in delimiters so it can affect tone and wording but not translation rules. Omit `style` entirely to keep the legacy translator prompt. One-off overrides: `translate` / `sync --style=… --formality=…` (CLI wins over config). Manage with `config get|set style.preset` / `style.formality` / `style.guide`.
+
+Each translation stores a `style_hash` (preset + formality + guide text). Exact TM hits are reused only when the fingerprint matches; changing style marks affected rows STALE. Projects with no `style` key are unchanged.
 
 | `outputMode` | `docs/getting-started.md` → `fr` |
 | --- | --- |

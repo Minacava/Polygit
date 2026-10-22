@@ -10,6 +10,8 @@ export interface TranslateContext {
   notes?: string;
   /** Resolved translation style. Omitted → unchanged system prompt. */
   style?: ResolvedStyle;
+  /** Sanitized project style-guide text (untrusted); omitted when unset. */
+  styleGuide?: string;
 }
 
 export const PROVIDER_NAMES = [
@@ -68,7 +70,7 @@ export function buildTranslationMessages(
       .join("\n") ?? "";
 
   // Style block (if any) is inserted before the untrusted-data security lines.
-  const styleBlock = buildStylePromptBlock(context?.style);
+  const styleBlock = buildStylePromptBlock(context?.style, context?.styleGuide);
 
   const system = [
     "You are a professional translator.",

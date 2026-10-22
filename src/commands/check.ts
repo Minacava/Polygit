@@ -10,6 +10,7 @@ import {
 } from "../core/layout.js";
 import {
   computeStyleHash,
+  loadStyleGuideText,
   openProjectDb,
   readConfig,
   requireProjectRoot,
@@ -241,7 +242,8 @@ export function runCheck(options: CheckOptions = {}): CheckResult {
   const langs = resolveCheckLangs(config, options.lang);
   const db = openProjectDb(root);
   try {
-    const styleHash = computeStyleHash(resolveStyle(config.style));
+    const styleGuide = loadStyleGuideText(root, config.style);
+    const styleHash = computeStyleHash(resolveStyle(config.style), styleGuide);
     // Editing .tmconfig.json style (or config set) is reflected here before counting.
     if (styleHash !== null) {
       for (const lang of langs) {
