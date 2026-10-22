@@ -329,6 +329,47 @@ export function markStyleHashStale(
   return segmentIds;
 }
 
+/**
+ * Mark translations stale when their stored style_hash differs from the
+ * expected hash for that document (path/lang-aware styles).
+ */
+export function markStyleHashStaleByExpected(
+  db: Database.Database,
+  lang: string,
+  expectedHashForDocument: (documentPath: string) => string | null,
+): string[] {
+  const ts = nowIso();
+  const rows = db
+    .prepare(
+      `SELECT t.segment_id AS segment_id, t.style_hash AS style_hash, d.path AS document_path
+       FROM translations t
+       JOIN segments s ON s.id = t.segment_id
+       JOIN documents d ON d.id = s.document_id
+       WHERE t.lang = ?`,
+    )
+    .all(lang) as Array<{
+    segment_id: string;
+    style_hash: string | null;
+    document_path: string;
+  }>;
+
+  const segmentIds: string[] = [];
+  const update = db.prepare(
+    `UPDATE translations
+     SET status = 'stale', approved = 0, updated_at = ?
+     WHERE segment_id = ? AND lang = ?`,
+  );
+
+  for (const row of rows) {
+    const expected = expectedHashForDocument(row.document_path);
+    const stored = row.style_hash ?? null;
+    if (stored === expected) continue;
+    update.run(ts, row.segment_id, lang);
+    if (!segmentIds.includes(row.segment_id)) segmentIds.push(row.segment_id);
+  }
+  return segmentIds;
+}
+
 export function getGlossary(db: Database.Database, lang?: string): GlossaryRow[] {
   if (lang) {
     return db.prepare(`SELECT * FROM glossary WHERE lang = ?`).all(lang) as GlossaryRow[];

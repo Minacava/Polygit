@@ -50,6 +50,10 @@ describe("style presets and formality", () => {
       formality: "formal",
     });
     assert.deepEqual(parseStyleConfig({ guide: "STYLE.md" }), { guide: "STYLE.md" });
+    assert.deepEqual(
+      parseStyleConfig({ paths: { "docs/papers": { preset: "Academic" } } }),
+      { paths: { "docs/papers": { preset: "academic" } } },
+    );
   });
 
   it("resolveStyle defaults formality to auto when a preset is set", () => {

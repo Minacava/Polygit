@@ -12,12 +12,13 @@ import { writeOutputDocuments } from "../core/output.js";
 import { missingPlaceholders } from "../core/placeholders.js";
 import {
   computeStyleHash,
+  hasStyleConfig,
   loadStyleGuideText,
   openProjectDb,
   readConfig,
   requireProjectRoot,
   resolveInsideProject,
-  resolveStyle,
+  resolveStyleForDocument,
   styleHashesMatch,
   toPosixRelative,
   writeConfig,
@@ -26,7 +27,7 @@ import {
   getGlossary,
   getTmEntries,
   listSegmentsForTranslate,
-  markStyleHashStale,
+  markStyleHashStaleByExpected,
   upsertTranslation,
   upsertTranslationMemory,
 } from "../core/repository.js";
@@ -67,12 +68,24 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
     await ensureTranslationBranch(root, lang);
   }
   const config = readConfig(root);
-  const resolvedStyle = resolveStyle(config.style, {
+  const cliStyle = {
     ...(options.style !== undefined ? { style: options.style } : {}),
     ...(options.formality !== undefined ? { formality: options.formality } : {}),
-  });
+  };
   const styleGuide = loadStyleGuideText(root, config.style);
-  const styleHash = computeStyleHash(resolvedStyle, styleGuide);
+  const styleActive =
+    hasStyleConfig(config.style) ||
+    options.style !== undefined ||
+    options.formality !== undefined;
+  const expectedStyleHash = (docPath: string) =>
+    computeStyleHash(
+      resolveStyleForDocument(config.style, {
+        documentPath: docPath,
+        lang,
+        ...cliStyle,
+      }),
+      styleGuide,
+    );
   const providerName: ProviderName = options.provider ?? config.defaultProvider;
   const modelChoice = await resolveTranslateModel(providerName, config, options.model);
 
@@ -84,7 +97,9 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
   const db = openProjectDb(root);
   try {
     // Style changes (config or CLI) mark mismatched translations stale before listing work.
-    markStyleHashStale(db, styleHash, lang);
+    if (styleActive) {
+      markStyleHashStaleByExpected(db, lang, expectedStyleHash);
+    }
 
     const segments = listSegmentsForTranslate(db, {
       lang,
@@ -129,6 +144,12 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
 
     for (const segment of segments) {
       touchedDocs.add(segment.document_path);
+      const resolvedStyle = resolveStyleForDocument(config.style, {
+        documentPath: segment.document_path,
+        lang,
+        ...cliStyle,
+      });
+      const styleHash = computeStyleHash(resolvedStyle, styleGuide);
       const match = tmIndex.match(segment.source_text);
 
       if (match?.kind === "exact" && styleHashesMatch(match.entry.style_hash, styleHash)) {
@@ -213,6 +234,12 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
     let llmDone = 0;
     try {
       await mapPool(llmQueue, concurrency, async (segment) => {
+        const resolvedStyle = resolveStyleForDocument(config.style, {
+          documentPath: segment.document_path,
+          lang,
+          ...cliStyle,
+        });
+        const styleHash = computeStyleHash(resolvedStyle, styleGuide);
         const maxAttempts = Math.max(1, (options.placeholderRetries ?? 1) + 1);
         let translated = "";
         let missing: string[] = [];

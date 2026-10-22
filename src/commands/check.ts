@@ -10,15 +10,16 @@ import {
 } from "../core/layout.js";
 import {
   computeStyleHash,
+  hasStyleConfig,
   loadStyleGuideText,
   openProjectDb,
   readConfig,
   requireProjectRoot,
   resolveInsideProject,
-  resolveStyle,
+  resolveStyleForDocument,
   type TmConfig,
 } from "../core/project.js";
-import { getStatusCounts, markStyleHashStale } from "../core/repository.js";
+import { getStatusCounts, markStyleHashStaleByExpected } from "../core/repository.js";
 
 export interface CheckOptions {
   /** When omitted, checks every language in config.targetLangs. */
@@ -139,23 +140,24 @@ function resolveCheckLangs(config: TmConfig, langOption?: string): string[] {
 function countStyleChangedStale(
   db: Database.Database,
   lang: string,
-  currentHash: string | null,
+  expectedHashForDocument: ((documentPath: string) => string | null) | null,
 ): Map<string, number> {
   const byPath = new Map<string, number>();
-  if (currentHash === null) return byPath;
+  if (!expectedHashForDocument) return byPath;
   const rows = db
     .prepare(
-      `SELECT d.path AS path, COUNT(*) AS n
+      `SELECT d.path AS path, t.style_hash AS style_hash
        FROM translations t
        JOIN segments s ON s.id = t.segment_id
        JOIN documents d ON d.id = s.document_id
-       WHERE t.lang = ?
-         AND t.status = 'stale'
-         AND (t.style_hash IS NULL OR t.style_hash != ?)
-       GROUP BY d.path`,
+       WHERE t.lang = ? AND t.status = 'stale'`,
     )
-    .all(lang, currentHash) as Array<{ path: string; n: number }>;
-  for (const row of rows) byPath.set(row.path, row.n);
+    .all(lang) as Array<{ path: string; style_hash: string | null }>;
+  for (const row of rows) {
+    const expected = expectedHashForDocument(row.path);
+    if ((row.style_hash ?? null) === expected) continue;
+    byPath.set(row.path, (byPath.get(row.path) ?? 0) + 1);
+  }
   return byPath;
 }
 
@@ -164,7 +166,7 @@ function collectLangIssues(
   projectRoot: string,
   config: TmConfig,
   lang: string,
-  currentStyleHash: string | null,
+  expectedHashForDocument: ((documentPath: string) => string | null) | null,
 ): LangCheckResult {
   const layout: LayoutFields = {
     contentRoots: config.contentRoots,
@@ -172,7 +174,7 @@ function collectLangIssues(
     outputRoot: config.outputRoot,
   };
   const rows = getStatusCounts(db, lang);
-  const styleChangedByPath = countStyleChangedStale(db, lang, currentStyleHash);
+  const styleChangedByPath = countStyleChangedStale(db, lang, expectedHashForDocument);
   const documents: LangDocumentIssue[] = [];
 
   for (const row of rows) {
@@ -243,17 +245,27 @@ export function runCheck(options: CheckOptions = {}): CheckResult {
   const db = openProjectDb(root);
   try {
     const styleGuide = loadStyleGuideText(root, config.style);
-    const styleHash = computeStyleHash(resolveStyle(config.style), styleGuide);
+    const styleActive = hasStyleConfig(config.style);
+    const expectedForLang = (lang: string) =>
+      styleActive
+        ? (docPath: string) =>
+            computeStyleHash(
+              resolveStyleForDocument(config.style, { documentPath: docPath, lang }),
+              styleGuide,
+            )
+        : null;
+
     // Editing .tmconfig.json style (or config set) is reflected here before counting.
-    if (styleHash !== null) {
+    if (styleActive) {
       for (const lang of langs) {
-        markStyleHashStale(db, styleHash, lang);
+        const expected = expectedForLang(lang);
+        if (expected) markStyleHashStaleByExpected(db, lang, expected);
       }
     }
 
     const drift = scanContentDrift(db, root, config, langs);
     const byLang = langs.map((lang) =>
-      collectLangIssues(db, root, config, lang, styleHash),
+      collectLangIssues(db, root, config, lang, expectedForLang(lang)),
     );
     const ok =
       drift.newFiles.length === 0 &&
