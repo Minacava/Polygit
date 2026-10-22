@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { sha256Text } from "./hash.js";
+import { assertLangCode } from "./lang.js";
+import { normalizeRootPath } from "./layout.js";
 import { resolveInsideProject, toPosixRelative } from "./paths.js";
 
 /** Translation style presets and formality. Preset text is fixed in code, never loaded from disk. */
@@ -65,17 +67,39 @@ export const STYLE_GUIDE_EXTENSIONS = [".md", ".txt"] as const;
 export const STYLE_GUIDE_START = "<POLYGIT_STYLE_GUIDE>";
 export const STYLE_GUIDE_END = "</POLYGIT_STYLE_GUIDE>";
 
+/** Per-path or per-language style overlay (preset / formality only). */
+export interface StyleOverride {
+  preset?: StylePreset;
+  formality?: Formality;
+}
+
+/** Max entries in style.paths or style.langs (untrusted config). */
+export const MAX_STYLE_OVERRIDE_ENTRIES = 64;
+
 export interface StyleConfig {
   preset?: StylePreset;
   formality?: Formality;
   /** Project-relative path to a `.md` / `.txt` style guide. */
   guide?: string;
+  /** Path-prefix overlays; longest matching prefix wins. */
+  paths?: Record<string, StyleOverride>;
+  /** Per-target-language overlays. */
+  langs?: Record<string, StyleOverride>;
 }
 
 /** Style after merging config with optional CLI overrides. */
 export interface ResolvedStyle {
   preset?: StylePreset;
   formality?: Formality;
+}
+
+export interface ResolveStyleOptions {
+  documentPath?: string;
+  lang?: string;
+  /** CLI `--style` (wins over config). */
+  style?: string;
+  /** CLI `--formality` (wins over config). */
+  formality?: string;
 }
 
 export function isStylePreset(value: string): value is StylePreset {
@@ -139,6 +163,86 @@ export function assertStyleGuidePath(value: unknown, label = "style.guide"): str
   return trimmed.replace(/\\/g, "/");
 }
 
+function parseStyleOverride(value: unknown, label: string): StyleOverride {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object (e.g. { "preset": "academic" })`);
+  }
+  const obj = value as Record<string, unknown>;
+  const allowed = new Set(["preset", "formality"]);
+  for (const key of Object.keys(obj)) {
+    if (!allowed.has(key)) {
+      throw new Error(`Unknown ${label} key "${key}". Allowed: preset, formality.`);
+    }
+  }
+  const out: StyleOverride = {};
+  if (obj.preset !== undefined && obj.preset !== null && obj.preset !== "") {
+    out.preset = assertStylePreset(obj.preset, `${label}.preset`);
+  }
+  if (obj.formality !== undefined && obj.formality !== null && obj.formality !== "") {
+    out.formality = assertFormality(obj.formality, `${label}.formality`);
+  }
+  if (out.preset === undefined && out.formality === undefined) {
+    throw new Error(`${label} must set preset and/or formality`);
+  }
+  return out;
+}
+
+function parseStylePaths(value: unknown): Record<string, StyleOverride> | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("style.paths must be an object of path → { preset?, formality? }");
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > MAX_STYLE_OVERRIDE_ENTRIES) {
+    throw new Error(
+      `style.paths exceeds maximum of ${MAX_STYLE_OVERRIDE_ENTRIES} entries`,
+    );
+  }
+  const out: Record<string, StyleOverride> = {};
+  for (const [rawKey, rawVal] of entries) {
+    let key: string;
+    try {
+      key = normalizeRootPath(rawKey);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Invalid style.paths key ${JSON.stringify(rawKey)}: ${message}`);
+    }
+    out[key] = parseStyleOverride(rawVal, `style.paths[${JSON.stringify(key)}]`);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function parseStyleLangs(value: unknown): Record<string, StyleOverride> | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("style.langs must be an object of lang → { preset?, formality? }");
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > MAX_STYLE_OVERRIDE_ENTRIES) {
+    throw new Error(
+      `style.langs exceeds maximum of ${MAX_STYLE_OVERRIDE_ENTRIES} entries`,
+    );
+  }
+  const out: Record<string, StyleOverride> = {};
+  for (const [rawKey, rawVal] of entries) {
+    const key = assertLangCode(rawKey, `style.langs key`);
+    out[key] = parseStyleOverride(rawVal, `style.langs[${JSON.stringify(key)}]`);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** True when any style-related config is present (including paths/langs/guide). */
+export function hasStyleConfig(configStyle: StyleConfig | undefined): boolean {
+  if (!configStyle) return false;
+  return Boolean(
+    configStyle.preset ||
+      configStyle.formality ||
+      configStyle.guide ||
+      (configStyle.paths && Object.keys(configStyle.paths).length > 0) ||
+      (configStyle.langs && Object.keys(configStyle.langs).length > 0),
+  );
+}
+
 /** Parse optional `style` from `.tmconfig.json`. Missing → undefined. */
 export function parseStyleConfig(value: unknown): StyleConfig | undefined {
   if (value === undefined || value === null) return undefined;
@@ -146,11 +250,11 @@ export function parseStyleConfig(value: unknown): StyleConfig | undefined {
     throw new Error('style must be an object (e.g. { "preset": "startup", "formality": "formal" })');
   }
   const obj = value as Record<string, unknown>;
-  const allowed = new Set(["preset", "formality", "guide"]);
+  const allowed = new Set(["preset", "formality", "guide", "paths", "langs"]);
   for (const key of Object.keys(obj)) {
     if (!allowed.has(key)) {
       throw new Error(
-        `Unknown style key "${key}". Allowed: preset, formality, guide.`,
+        `Unknown style key "${key}". Allowed: preset, formality, guide, paths, langs.`,
       );
     }
   }
@@ -165,33 +269,82 @@ export function parseStyleConfig(value: unknown): StyleConfig | undefined {
   if (obj.guide !== undefined && obj.guide !== null && obj.guide !== "") {
     out.guide = assertStyleGuidePath(obj.guide);
   }
+  const paths = parseStylePaths(obj.paths);
+  if (paths) out.paths = paths;
+  const langs = parseStyleLangs(obj.langs);
+  if (langs) out.langs = langs;
 
-  if (out.preset === undefined && out.formality === undefined && out.guide === undefined) {
-    return undefined;
-  }
+  if (!hasStyleConfig(out)) return undefined;
   return out;
 }
 
-/** Merge project style with CLI flags (CLI wins). Undefined when unset. */
-export function resolveStyle(
+/**
+ * Longest path-prefix match for a document (posix-relative).
+ * `docs/papers` matches `docs/papers/a.md`; `docs` is shorter so loses.
+ */
+export function matchStylePathOverride(
+  paths: Record<string, StyleOverride> | undefined,
+  documentPath: string,
+): StyleOverride | undefined {
+  if (!paths) return undefined;
+  const doc = documentPath.replace(/\\/g, "/").replace(/^\/+/, "");
+  let bestKey = "";
+  let best: StyleOverride | undefined;
+  for (const [key, layer] of Object.entries(paths)) {
+    if (doc === key || doc.startsWith(`${key}/`)) {
+      if (key.length > bestKey.length) {
+        bestKey = key;
+        best = layer;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Resolve effective style for a document/language.
+ * Priority: CLI > longest matching path > langs > global > none.
+ */
+export function resolveStyleForDocument(
   configStyle: StyleConfig | undefined,
-  overrides?: { style?: string; formality?: string },
+  options: ResolveStyleOptions = {},
 ): ResolvedStyle | undefined {
   let preset: StylePreset | undefined = configStyle?.preset;
   let formality: Formality | undefined = configStyle?.formality;
 
-  if (overrides?.style !== undefined) {
-    preset = assertStylePreset(overrides.style, "--style");
+  if (options.lang && configStyle?.langs) {
+    const langKey = options.lang;
+    const layer =
+      configStyle.langs[langKey] ??
+      // Tolerant match on lowercase keys (assertLangCode preserves case; keys are as stored).
+      Object.entries(configStyle.langs).find(
+        ([k]) => k.toLowerCase() === langKey.toLowerCase(),
+      )?.[1];
+    if (layer) {
+      if (layer.preset !== undefined) preset = layer.preset;
+      if (layer.formality !== undefined) formality = layer.formality;
+    }
   }
-  if (overrides?.formality !== undefined) {
-    formality = assertFormality(overrides.formality, "--formality");
+
+  if (options.documentPath) {
+    const pathLayer = matchStylePathOverride(configStyle?.paths, options.documentPath);
+    if (pathLayer) {
+      if (pathLayer.preset !== undefined) preset = pathLayer.preset;
+      if (pathLayer.formality !== undefined) formality = pathLayer.formality;
+    }
+  }
+
+  if (options.style !== undefined) {
+    preset = assertStylePreset(options.style, "--style");
+  }
+  if (options.formality !== undefined) {
+    formality = assertFormality(options.formality, "--formality");
   }
 
   if (preset === undefined && formality === undefined) {
     return undefined;
   }
 
-  // Active style without an explicit formality → auto.
   if (formality === undefined) {
     formality = DEFAULT_FORMALITY;
   }
@@ -199,6 +352,17 @@ export function resolveStyle(
   const resolved: ResolvedStyle = { formality };
   if (preset !== undefined) resolved.preset = preset;
   return resolved;
+}
+
+/** Merge project style with CLI flags (CLI wins). Undefined when unset. */
+export function resolveStyle(
+  configStyle: StyleConfig | undefined,
+  overrides?: { style?: string; formality?: string },
+): ResolvedStyle | undefined {
+  return resolveStyleForDocument(configStyle, {
+    ...(overrides?.style !== undefined ? { style: overrides.style } : {}),
+    ...(overrides?.formality !== undefined ? { formality: overrides.formality } : {}),
+  });
 }
 
 /**

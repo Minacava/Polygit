@@ -27,10 +27,14 @@ export {
   STYLE_PRESETS,
   FORMALITY_VALUES,
   MAX_STYLE_GUIDE_BYTES,
+  MAX_STYLE_OVERRIDE_ENTRIES,
   STYLE_GUIDE_START,
   STYLE_GUIDE_END,
   parseStyleConfig,
   resolveStyle,
+  resolveStyleForDocument,
+  matchStylePathOverride,
+  hasStyleConfig,
   assertStylePreset,
   assertFormality,
   assertStyleGuidePath,
@@ -42,6 +46,8 @@ export {
   type StylePreset,
   type Formality,
   type ResolvedStyle,
+  type StyleOverride,
+  type ResolveStyleOptions,
 } from "./style.js";
 
 export type ProviderModels = Partial<Record<ProviderName, string>>;
