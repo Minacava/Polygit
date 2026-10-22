@@ -64,7 +64,9 @@ polygit config get style.preset
 
 Supported keys: `sourceLang`, `targetLangs`, `contentRoots`, `outputRoot`, `outputMode`, `autoTranslate`, `style.preset`, `style.formality`, `style.guide`. Invalid values are rejected (same rules as reading config). Style presets and formality use closed lists (`academic`/`startup`/`technical`/`marketing`/`legal`; `formal`/`informal`/`auto`). `style.guide` is a project-relative `.md` or `.txt` path (max 8 KB; no symlinks).
 
-Changing `style.preset` / `style.formality` / `style.guide` (or editing the guide file) marks translations whose stored `style_hash` differs as **stale** (approved text is kept until `translate` refreshes them; refreshed rows are unapproved). `check` reports those as `stale=… (style changed=…)`. Without a `style` block in config, style never marks anything stale.
+In `.tmconfig.json`, optional `style.paths` (path-prefix → `{ preset?, formality? }`) and `style.langs` (lang → overlay) are validated with `normalizeRootPath` / `assertLangCode` (max 64 entries each). Priority: CLI > longest path > lang > global.
+
+Changing style (or editing the guide) marks translations whose stored `style_hash` differs as **stale** for the resolved document style only. `check` reports `stale=… (style changed=…)`. Without a `style` block, style never marks anything stale.
 
 ---
 

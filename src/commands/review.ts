@@ -9,7 +9,7 @@ import {
   openProjectDb,
   readConfig,
   requireProjectRoot,
-  resolveStyle,
+  resolveStyleForDocument,
 } from "../core/project.js";
 import {
   countUnapprovedTranslations,
@@ -68,10 +68,12 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
   const touchedDocs = new Set<string>();
   const lang = options.lang;
   const config = readConfig(root);
-  const styleHash = computeStyleHash(
-    resolveStyle(config.style),
-    loadStyleGuideText(root, config.style),
-  );
+  const styleGuide = loadStyleGuideText(root, config.style);
+  const styleHashFor = (documentPath: string) =>
+    computeStyleHash(
+      resolveStyleForDocument(config.style, { documentPath, lang }),
+      styleGuide,
+    );
 
   try {
     const rows = listReviewSegments(db, {
@@ -96,7 +98,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
             row.target_text,
             touchedDocs,
             row.document_path,
-            styleHash,
+            styleHashFor(row.document_path),
           )
         ) {
           approved += 1;
@@ -148,7 +150,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
                   next.target_text,
                   touchedDocs,
                   next.document_path,
-                  styleHash,
+                  styleHashFor(next.document_path),
                 )
               ) {
                 bulk += 1;
@@ -173,7 +175,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
                 row.target_text,
                 touchedDocs,
                 row.document_path,
-                styleHash,
+                styleHashFor(row.document_path),
               )
             ) {
               console.log("No translation to approve.");
@@ -189,7 +191,15 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
               console.log("Empty edit ignored.\n");
               continue;
             }
-            upsertTranslation(db, row.id, lang, edited.trim(), "manual", true, styleHash);
+            upsertTranslation(
+              db,
+              row.id,
+              lang,
+              edited.trim(),
+              "manual",
+              true,
+              styleHashFor(row.document_path),
+            );
             touchedDocs.add(row.document_path);
             console.log("Saved and approved.\n");
           }

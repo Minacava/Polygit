@@ -204,12 +204,18 @@ Untagged Ollama IDs (e.g. `llama3.2`) match tagged installs (e.g. `llama3.2:late
 Optional `style` steers tone via fixed presets inside polygit (`academic`, `startup`, `technical`, `marketing`, `legal`) plus `formality` (`formal` \| `informal` \| `auto`) and an optional project guide file:
 
 ```json
-"style": { "preset": "startup", "formality": "formal", "guide": "STYLE.md" }
+"style": {
+  "preset": "startup",
+  "formality": "formal",
+  "guide": "STYLE.md",
+  "paths": { "docs/papers": { "preset": "academic" } },
+  "langs": { "de": { "formality": "formal" } }
+}
 ```
 
-The guide is untrusted repo text: read only inside the project (no symlinks), `.md` / `.txt` only, max 8 KB, wrapped in delimiters so it can affect tone and wording but not translation rules. Omit `style` entirely to keep the legacy translator prompt. One-off overrides: `translate` / `sync --style=… --formality=…` (CLI wins over config). Manage with `config get|set style.preset` / `style.formality` / `style.guide`.
+Resolution order: CLI flags > longest matching `paths` prefix > `langs` > global style. The guide is untrusted repo text (inside the project, no symlinks, `.md` / `.txt`, max 8 KB). Omit `style` to keep the legacy translator prompt. Manage with `config get|set style.preset` / `style.formality` / `style.guide`.
 
-Each translation stores a `style_hash` (preset + formality + guide text). Exact TM hits are reused only when the fingerprint matches; changing style marks affected rows STALE. Projects with no `style` key are unchanged.
+Each translation stores a `style_hash` for the resolved style of that document/language. Exact TM hits require a matching fingerprint; style changes mark only affected rows STALE.
 
 | `outputMode` | `docs/getting-started.md` → `fr` |
 | --- | --- |

@@ -9,6 +9,7 @@ import {
   assertStyleGuidePath,
   assertStylePreset,
   computeStyleHash,
+  hasStyleConfig,
   loadStyleGuideText,
   openProjectDb,
   parseBoolFlag,
@@ -16,14 +17,14 @@ import {
   parseSourceLang,
   readConfig,
   requireProjectRoot,
-  resolveStyle,
+  resolveStyleForDocument,
   writeConfig,
   type Formality,
   type StyleConfig,
   type StylePreset,
   type TmConfig,
 } from "../core/project.js";
-import { markStyleHashStale } from "../core/repository.js";
+import { markStyleHashStaleByExpected } from "../core/repository.js";
 
 export const CONFIG_KEYS = [
   "sourceLang",
@@ -162,18 +163,37 @@ export function runConfigSet(key: string, value: string): TmConfig {
   console.log(`Set ${key}=${formatValue(key, next)}`);
 
   if (key === "style.preset" || key === "style.formality" || key === "style.guide") {
-    const guideText = loadStyleGuideText(root, next.style);
-    const styleHash = computeStyleHash(resolveStyle(next.style), guideText);
-    const db = openProjectDb(root);
-    try {
-      const staleIds = markStyleHashStale(db, styleHash);
-      if (staleIds.length > 0) {
-        console.log(
-          `Marked ${staleIds.length} segment(s) stale (style changed). Run translate to refresh.`,
-        );
+    if (hasStyleConfig(next.style)) {
+      const guideText = loadStyleGuideText(root, next.style);
+      const db = openProjectDb(root);
+      try {
+        const langs = [
+          ...new Set([
+            ...next.targetLangs,
+            ...(
+              db.prepare(`SELECT DISTINCT lang FROM translations`).all() as Array<{ lang: string }>
+            ).map((r) => r.lang),
+          ]),
+        ];
+        const staleIds = new Set<string>();
+        for (const lang of langs) {
+          for (const id of markStyleHashStaleByExpected(db, lang, (docPath) =>
+            computeStyleHash(
+              resolveStyleForDocument(next.style, { documentPath: docPath, lang }),
+              guideText,
+            ),
+          )) {
+            staleIds.add(id);
+          }
+        }
+        if (staleIds.size > 0) {
+          console.log(
+            `Marked ${staleIds.size} segment(s) stale (style changed). Run translate to refresh.`,
+          );
+        }
+      } finally {
+        db.close();
       }
-    } finally {
-      db.close();
     }
   }
 
