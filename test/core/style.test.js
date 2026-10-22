@@ -37,7 +37,8 @@ describe("style presets and formality", () => {
     assert.throws(() => parseStyleConfig({ preset: "nope" }), /Unknown style\.preset/);
     assert.throws(() => parseStyleConfig({ formality: "loose" }), /Unknown style\.formality/);
     assert.throws(() => parseStyleConfig("startup"), /style must be an object/);
-    assert.throws(() => parseStyleConfig({ preset: "startup", guide: "x" }), /Unknown style key/);
+    assert.throws(() => parseStyleConfig({ preset: "startup", guide: "x" }), /must end with/);
+    assert.throws(() => parseStyleConfig({ preset: "startup", tone: "x" }), /Unknown style key/);
   });
 
   it("parseStyleConfig accepts valid objects and treats empty as absent", () => {
@@ -48,6 +49,7 @@ describe("style presets and formality", () => {
       preset: "startup",
       formality: "formal",
     });
+    assert.deepEqual(parseStyleConfig({ guide: "STYLE.md" }), { guide: "STYLE.md" });
   });
 
   it("resolveStyle defaults formality to auto when a preset is set", () => {

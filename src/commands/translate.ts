@@ -12,6 +12,7 @@ import { writeOutputDocuments } from "../core/output.js";
 import { missingPlaceholders } from "../core/placeholders.js";
 import {
   computeStyleHash,
+  loadStyleGuideText,
   openProjectDb,
   readConfig,
   requireProjectRoot,
@@ -70,7 +71,8 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
     ...(options.style !== undefined ? { style: options.style } : {}),
     ...(options.formality !== undefined ? { formality: options.formality } : {}),
   });
-  const styleHash = computeStyleHash(resolvedStyle);
+  const styleGuide = loadStyleGuideText(root, config.style);
+  const styleHash = computeStyleHash(resolvedStyle, styleGuide);
   const providerName: ProviderName = options.provider ?? config.defaultProvider;
   const modelChoice = await resolveTranslateModel(providerName, config, options.model);
 
@@ -223,6 +225,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
               glossary,
               documentPath: segment.document_path,
               ...(resolvedStyle ? { style: resolvedStyle } : {}),
+              ...(styleGuide ? { styleGuide } : {}),
               ...(attempt > 0
                 ? {
                     notes:

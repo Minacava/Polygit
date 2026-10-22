@@ -6,8 +6,10 @@ import {
 import {
   assertFormality,
   assertSourceNotInTargets,
+  assertStyleGuidePath,
   assertStylePreset,
   computeStyleHash,
+  loadStyleGuideText,
   openProjectDb,
   parseBoolFlag,
   parseLangCsv,
@@ -32,6 +34,7 @@ export const CONFIG_KEYS = [
   "autoTranslate",
   "style.preset",
   "style.formality",
+  "style.guide",
 ] as const;
 
 export type ConfigKey = (typeof CONFIG_KEYS)[number];
@@ -46,6 +49,8 @@ function formatValue(key: ConfigKey, config: TmConfig): string {
       return config.style?.preset ?? "";
     case "style.formality":
       return config.style?.formality ?? "";
+    case "style.guide":
+      return config.style?.guide ?? "";
     case "sourceLang":
     case "targetLangs":
     case "contentRoots":
@@ -66,7 +71,11 @@ function formatValue(key: ConfigKey, config: TmConfig): string {
 
 function withStyle(config: TmConfig, patch: StyleConfig): TmConfig {
   const nextStyle: StyleConfig = { ...config.style, ...patch };
-  if (nextStyle.preset === undefined && nextStyle.formality === undefined) {
+  if (
+    nextStyle.preset === undefined &&
+    nextStyle.formality === undefined &&
+    nextStyle.guide === undefined
+  ) {
     const { style: _omit, ...rest } = config;
     return { ...rest };
   }
@@ -113,6 +122,10 @@ function applyConfigValue(config: TmConfig, key: ConfigKey, raw: string): TmConf
       const formality: Formality = assertFormality(raw.trim(), "style.formality");
       return withStyle(next, { formality });
     }
+    case "style.guide": {
+      const guide = assertStyleGuidePath(raw.trim(), "style.guide");
+      return withStyle(next, { guide });
+    }
     default: {
       const _exhaustive: never = key;
       throw new Error(`Unsupported config key: ${String(_exhaustive)}`);
@@ -148,8 +161,9 @@ export function runConfigSet(key: string, value: string): TmConfig {
   writeConfig(root, next);
   console.log(`Set ${key}=${formatValue(key, next)}`);
 
-  if (key === "style.preset" || key === "style.formality") {
-    const styleHash = computeStyleHash(resolveStyle(next.style));
+  if (key === "style.preset" || key === "style.formality" || key === "style.guide") {
+    const guideText = loadStyleGuideText(root, next.style);
+    const styleHash = computeStyleHash(resolveStyle(next.style), guideText);
     const db = openProjectDb(root);
     try {
       const staleIds = markStyleHashStale(db, styleHash);

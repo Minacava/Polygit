@@ -5,6 +5,7 @@ import { assertLangCode } from "../core/lang.js";
 import { writeOutputDocuments } from "../core/output.js";
 import {
   computeStyleHash,
+  loadStyleGuideText,
   openProjectDb,
   readConfig,
   requireProjectRoot,
@@ -66,7 +67,11 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
   const db = openProjectDb(root);
   const touchedDocs = new Set<string>();
   const lang = options.lang;
-  const styleHash = computeStyleHash(resolveStyle(readConfig(root).style));
+  const config = readConfig(root);
+  const styleHash = computeStyleHash(
+    resolveStyle(config.style),
+    loadStyleGuideText(root, config.style),
+  );
 
   try {
     const rows = listReviewSegments(db, {
