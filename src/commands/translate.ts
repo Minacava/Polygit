@@ -11,11 +11,13 @@ import { mapPool, TranslationMemoryIndex } from "../core/matcher.js";
 import { writeOutputDocuments } from "../core/output.js";
 import { missingPlaceholders } from "../core/placeholders.js";
 import {
+  computeStyleHash,
   openProjectDb,
   readConfig,
   requireProjectRoot,
   resolveInsideProject,
   resolveStyle,
+  styleHashesMatch,
   toPosixRelative,
   writeConfig,
 } from "../core/project.js";
@@ -23,6 +25,7 @@ import {
   getGlossary,
   getTmEntries,
   listSegmentsForTranslate,
+  markStyleHashStale,
   upsertTranslation,
   upsertTranslationMemory,
 } from "../core/repository.js";
@@ -67,6 +70,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
     ...(options.style !== undefined ? { style: options.style } : {}),
     ...(options.formality !== undefined ? { formality: options.formality } : {}),
   });
+  const styleHash = computeStyleHash(resolvedStyle);
   const providerName: ProviderName = options.provider ?? config.defaultProvider;
   const modelChoice = await resolveTranslateModel(providerName, config, options.model);
 
@@ -77,6 +81,9 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
 
   const db = openProjectDb(root);
   try {
+    // Style changes (config or CLI) mark mismatched translations stale before listing work.
+    markStyleHashStale(db, styleHash, lang);
+
     const segments = listSegmentsForTranslate(db, {
       lang,
       ...(documentPath ? { documentPath } : {}),
@@ -95,6 +102,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
         target_text: e.target_text,
         lang: e.lang,
         usage_count: e.usage_count,
+        style_hash: e.style_hash,
       })),
     );
 
@@ -121,16 +129,31 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
       touchedDocs.add(segment.document_path);
       const match = tmIndex.match(segment.source_text);
 
-      if (match?.kind === "exact") {
+      if (match?.kind === "exact" && styleHashesMatch(match.entry.style_hash, styleHash)) {
         if (!options.dryRun) {
-          upsertTranslation(db, segment.id, lang, match.entry.target_text, "tm-exact");
-          upsertTranslationMemory(db, segment.source_text, match.entry.target_text, lang);
+          upsertTranslation(
+            db,
+            segment.id,
+            lang,
+            match.entry.target_text,
+            "tm-exact",
+            false,
+            styleHash,
+          );
+          upsertTranslationMemory(
+            db,
+            segment.source_text,
+            match.entry.target_text,
+            lang,
+            styleHash,
+          );
           tmIndex.add({
             id: match.entry.id,
             source_text: segment.source_text,
             target_text: match.entry.target_text,
             lang,
             usage_count: 1,
+            style_hash: styleHash,
           });
         }
         tmExact += 1;
@@ -140,7 +163,15 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
       if (match?.kind === "fuzzy") {
         if (options.acceptFuzzy) {
           if (!options.dryRun) {
-            upsertTranslation(db, segment.id, lang, match.entry.target_text, "tm-fuzzy", false);
+            upsertTranslation(
+              db,
+              segment.id,
+              lang,
+              match.entry.target_text,
+              "tm-fuzzy",
+              false,
+              styleHash,
+            );
           }
           tmFuzzy += 1;
           continue;
@@ -207,19 +238,20 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
 
         if (missing.length > 0) {
           // Keep draft for review; do not write broken text into TM as exact memory.
-          upsertTranslation(db, segment.id, lang, translated, "llm", false);
+          upsertTranslation(db, segment.id, lang, translated, "llm", false, styleHash);
           console.warn(
             `Placeholder check failed for ${segment.document_path} (${segment.id.slice(0, 8)}…): missing ${missing.join(", ")}. Left unapproved for review.`,
           );
         } else {
-          upsertTranslation(db, segment.id, lang, translated, "llm");
-          upsertTranslationMemory(db, segment.source_text, translated, lang);
+          upsertTranslation(db, segment.id, lang, translated, "llm", false, styleHash);
+          upsertTranslationMemory(db, segment.source_text, translated, lang, styleHash);
           tmIndex.add({
             id: `runtime_${segment.id}`,
             source_text: segment.source_text,
             target_text: translated,
             lang,
             usage_count: 1,
+            style_hash: styleHash,
           });
         }
         llm += 1;

@@ -7,17 +7,21 @@ import {
   assertFormality,
   assertSourceNotInTargets,
   assertStylePreset,
+  computeStyleHash,
+  openProjectDb,
   parseBoolFlag,
   parseLangCsv,
   parseSourceLang,
   readConfig,
   requireProjectRoot,
+  resolveStyle,
   writeConfig,
   type Formality,
   type StyleConfig,
   type StylePreset,
   type TmConfig,
 } from "../core/project.js";
+import { markStyleHashStale } from "../core/repository.js";
 
 export const CONFIG_KEYS = [
   "sourceLang",
@@ -143,5 +147,21 @@ export function runConfigSet(key: string, value: string): TmConfig {
   const next = applyConfigValue(current, key, value);
   writeConfig(root, next);
   console.log(`Set ${key}=${formatValue(key, next)}`);
+
+  if (key === "style.preset" || key === "style.formality") {
+    const styleHash = computeStyleHash(resolveStyle(next.style));
+    const db = openProjectDb(root);
+    try {
+      const staleIds = markStyleHashStale(db, styleHash);
+      if (staleIds.length > 0) {
+        console.log(
+          `Marked ${staleIds.length} segment(s) stale (style changed). Run translate to refresh.`,
+        );
+      }
+    } finally {
+      db.close();
+    }
+  }
+
   return next;
 }

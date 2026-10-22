@@ -209,6 +209,7 @@ export function upsertTranslation(
   targetText: string,
   source: TranslationSource,
   approved = false,
+  styleHash: string | null = null,
 ): void {
   const ts = nowIso();
   const langStatus = approved ? "approved" : "translated";
@@ -218,13 +219,26 @@ export function upsertTranslation(
 
   if (existing) {
     db.prepare(
-      `UPDATE translations SET target_text = ?, source = ?, status = ?, approved = ?, updated_at = ? WHERE id = ?`,
-    ).run(targetText, source, langStatus, approved ? 1 : 0, ts, existing.id);
+      `UPDATE translations
+       SET target_text = ?, source = ?, status = ?, approved = ?, updated_at = ?, style_hash = ?
+       WHERE id = ?`,
+    ).run(targetText, source, langStatus, approved ? 1 : 0, ts, styleHash, existing.id);
   } else {
     db.prepare(
-      `INSERT INTO translations (id, segment_id, lang, target_text, source, status, approved, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(createId("tr"), segmentId, lang, targetText, source, langStatus, approved ? 1 : 0, ts);
+      `INSERT INTO translations
+         (id, segment_id, lang, target_text, source, status, approved, updated_at, style_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      createId("tr"),
+      segmentId,
+      lang,
+      targetText,
+      source,
+      langStatus,
+      approved ? 1 : 0,
+      ts,
+      styleHash,
+    );
   }
 
   // Keep segment row as a coarse rollup only (pending → translated once any lang exists).
@@ -247,6 +261,7 @@ export function upsertTranslationMemory(
   sourceText: string,
   targetText: string,
   lang: string,
+  styleHash: string | null = null,
 ): void {
   const normalized = normalizeText(sourceText);
   const hit = db
@@ -256,16 +271,62 @@ export function upsertTranslationMemory(
   if (hit) {
     db.prepare(
       `UPDATE translation_memory
-       SET target_text = ?, usage_count = usage_count + 1, updated_at = ?
+       SET target_text = ?, usage_count = usage_count + 1, updated_at = ?, style_hash = ?
        WHERE id = ?`,
-    ).run(targetText, ts, hit.id);
+    ).run(targetText, ts, styleHash, hit.id);
   } else {
     db.prepare(
       `INSERT INTO translation_memory
-         (id, source_text, target_text, lang, usage_count, updated_at, source_norm)
-       VALUES (?, ?, ?, ?, 1, ?, ?)`,
-    ).run(createId("tm"), sourceText, targetText, lang, ts, normalized);
+         (id, source_text, target_text, lang, usage_count, updated_at, source_norm, style_hash)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
+    ).run(createId("tm"), sourceText, targetText, lang, ts, normalized, styleHash);
   }
+}
+
+/**
+ * Mark translations whose style_hash differs from `currentHash` as stale.
+ * When `currentHash` is null (no style configured), marks nothing.
+ * Keeps target_text; clears approved until retranslate. Returns affected segment ids.
+ */
+export function markStyleHashStale(
+  db: Database.Database,
+  currentHash: string | null,
+  lang?: string,
+): string[] {
+  if (currentHash === null) return [];
+
+  const ts = nowIso();
+  const rows = (
+    lang
+      ? db
+          .prepare(
+            `SELECT segment_id, style_hash, status FROM translations WHERE lang = ?`,
+          )
+          .all(lang)
+      : db.prepare(`SELECT segment_id, style_hash, status, lang FROM translations`).all()
+  ) as Array<{
+    segment_id: string;
+    style_hash: string | null;
+    status: string;
+    lang?: string;
+  }>;
+
+  const segmentIds: string[] = [];
+  const update = db.prepare(
+    `UPDATE translations
+     SET status = 'stale', approved = 0, updated_at = ?
+     WHERE segment_id = ? AND lang = ?`,
+  );
+
+  for (const row of rows) {
+    const stored = row.style_hash ?? null;
+    if (stored === currentHash) continue;
+    const rowLang = lang ?? row.lang;
+    if (!rowLang) continue;
+    update.run(ts, row.segment_id, rowLang);
+    if (!segmentIds.includes(row.segment_id)) segmentIds.push(row.segment_id);
+  }
+  return segmentIds;
 }
 
 export function getGlossary(db: Database.Database, lang?: string): GlossaryRow[] {

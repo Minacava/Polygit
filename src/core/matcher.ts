@@ -6,6 +6,8 @@ export interface TmEntry {
   target_text: string;
   lang: string;
   usage_count: number;
+  /** Style fingerprint; exact reuse requires a match with the current style. */
+  style_hash?: string | null;
 }
 
 export interface MatchResult {
