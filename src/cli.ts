@@ -84,7 +84,7 @@ configCmd
   .description("Print a config value")
   .argument(
     "<key>",
-    "sourceLang | targetLangs | contentRoots | outputRoot | outputMode | autoTranslate | style.preset | style.formality",
+    "sourceLang | targetLangs | contentRoots | outputRoot | outputMode | autoTranslate | style.preset | style.formality | style.guide",
   )
   .action((key: string) => {
     runConfigGet(key);
@@ -95,11 +95,11 @@ configCmd
   .description("Update a config value (validated like readConfig)")
   .argument(
     "<key>",
-    "sourceLang | targetLangs | contentRoots | outputRoot | outputMode | autoTranslate | style.preset | style.formality",
+    "sourceLang | targetLangs | contentRoots | outputRoot | outputMode | autoTranslate | style.preset | style.formality | style.guide",
   )
   .argument(
     "<value>",
-    "New value (comma-separated for lists; true/false for autoTranslate; style preset/formality enums)",
+    "New value (comma-separated for lists; true/false for autoTranslate; style preset/formality/guide)",
   )
   .action((key: string, value: string) => {
     runConfigSet(key, value);
