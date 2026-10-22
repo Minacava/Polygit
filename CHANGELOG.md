@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.4
+
 - `style.paths` / `style.langs` overlays (max 64 each): resolve CLI > longest path prefix > lang > global; fingerprint per document so only affected rows go STALE
 - Optional `style.guide` (project `.md` / `.txt`, max 8 KB via `resolveInsideProject`): delimited in the system prompt; tone/word-choice only; control chars and delimiter tags stripped; content included in `style_hash`
 - Schema v6: `style_hash` on `translations` and `translation_memory` (v5→v6 keeps rows; NULL = unset style)
