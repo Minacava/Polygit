@@ -17,10 +17,23 @@ import {
   parseOutputRoot,
   type OutputMode,
 } from "./layout.js";
+import { parseStyleConfig, type StyleConfig } from "./style.js";
 
 export type { ProviderName };
 export type { OutputMode };
+export type { StyleConfig };
 export { resolveInsideProject, toPosixRelative } from "./paths.js";
+export {
+  STYLE_PRESETS,
+  FORMALITY_VALUES,
+  parseStyleConfig,
+  resolveStyle,
+  assertStylePreset,
+  assertFormality,
+  type StylePreset,
+  type Formality,
+  type ResolvedStyle,
+} from "./style.js";
 
 export type ProviderModels = Partial<Record<ProviderName, string>>;
 
@@ -53,6 +66,8 @@ export interface TmConfig {
    * github.com and gitlab.com are always trusted; other hosts also need `--forge`.
    */
   forgeHosts: string[];
+  /** Optional translation style. When omitted, prompts match the previous default. */
+  style?: StyleConfig;
 }
 
 export const DEFAULT_CONFIG: TmConfig = {
@@ -124,6 +139,8 @@ export function readConfig(projectRoot: string): TmConfig {
   const targetLangs = parseTargetLangs(obj.targetLangs);
   assertSourceNotInTargets(sourceLang, targetLangs);
 
+  const style = parseStyleConfig(obj.style);
+
   return {
     sourceLang,
     targetLangs,
@@ -134,6 +151,7 @@ export function readConfig(projectRoot: string): TmConfig {
     defaultProvider: parseProviderName(obj.defaultProvider),
     models: parseProviderModels(obj.models),
     forgeHosts: parseForgeHosts(obj.forgeHosts),
+    ...(style ? { style } : {}),
   };
 }
 

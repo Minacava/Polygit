@@ -110,6 +110,9 @@ polygit translate fr --dry-run
 # Translate one document with a one-off provider/model
 polygit translate fr --doc=sources/intro.md --provider=ollama --model=mistral
 
+# Tone for this run (or set style.preset / style.formality in .tmconfig.json)
+polygit translate fr --style=academic --formality=formal
+
 # Lock terminology, then re-translate what it affects
 polygit glossary add "Sign in" "Se connecter" --lang=fr
 polygit glossary sync --lang=fr --auto-retranslate
@@ -140,8 +143,8 @@ In `review`, each segment shows SOURCE and TARGET. Prompt: `Action [a/A/e/s/q] >
 
 | Command | What it does |
 | --- | --- |
-| `init` | Create `.tmconfig.json` (guided on TTY, or via flags) |
-| `config get` / `set` | Read or update languages, roots, `outputMode`, `autoTranslate` |
+| `init` | Create `.tmconfig.json` (guided on TTY, or via flags; optional style preset) |
+| `config get` / `set` | Read or update languages, roots, `outputMode`, `autoTranslate`, `style.*` |
 | `sync` | Import NEW/CHANGED sources and translate (always unapproved) |
 | `hooks install` | Opt-in pre-commit that runs `polygit check` only |
 | `clone` | Clone a GitHub/GitLab repo and run `init` |
@@ -191,11 +194,14 @@ Untagged Ollama IDs (e.g. `llama3.2`) match tagged installs (e.g. `llama3.2:late
   "outputRoot": "outputs",
   "autoTranslate": false,
   "defaultProvider": "ollama",
-  "models": { "ollama": "llama3.2" }
+  "models": { "ollama": "llama3.2" },
+  "style": { "preset": "startup", "formality": "formal" }
 }
 ```
 
 `autoTranslate` (from `init` / `config set`) signals that you intend to run `polygit sync` in your workflow. It does not install Git hooks — use `polygit hooks install` for an opt-in pre-commit `check`.
+
+Optional `style` steers tone via fixed presets inside polygit (`academic`, `startup`, `technical`, `marketing`, `legal`) plus `formality` (`formal` \| `informal` \| `auto`). Omit `style` entirely to keep the legacy translator prompt. One-off overrides: `translate` / `sync --style=… --formality=…` (CLI wins over config). Manage with `config get|set style.preset` / `style.formality`.
 
 | `outputMode` | `docs/getting-started.md` → `fr` |
 | --- | --- |

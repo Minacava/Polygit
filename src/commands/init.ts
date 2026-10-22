@@ -15,7 +15,9 @@ import {
   type LayoutPresetName,
 } from "../core/layout.js";
 import {
+  assertFormality,
   assertSourceNotInTargets,
+  assertStylePreset,
   CONFIG_FILENAME,
   DEFAULT_CONFIG,
   findProjectRoot,
@@ -24,7 +26,10 @@ import {
   parseBoolFlag,
   parseLangCsv,
   parseSourceLang,
+  STYLE_PRESETS,
   writeConfig,
+  type StyleConfig,
+  type StylePreset,
   type TmConfig,
 } from "../core/project.js";
 import { ensureGitRepo } from "../git/git.js";
@@ -77,6 +82,10 @@ export interface InitOptions {
   content?: string;
   /** Output root folder (mirror mode) or translations folder hint. */
   output?: string;
+  /** Translation style preset (academic | startup | …). */
+  style?: string;
+  /** Translation formality (formal | informal | auto). */
+  formality?: string;
   /**
    * Injected prompt for tests / custom UIs. When set, init asks interactively
    * even without a TTY.
@@ -132,7 +141,20 @@ interface ResolvedInitFields {
   outputRoot: string;
   outputMode: LayoutConfig["outputMode"];
   autoTranslate: boolean;
+  style?: StyleConfig;
   usedDefaultsWithoutTty: boolean;
+}
+
+function styleFromFlags(options: InitOptions): StyleConfig | undefined {
+  const out: StyleConfig = {};
+  if (options.style !== undefined) {
+    out.preset = assertStylePreset(options.style, "--style");
+  }
+  if (options.formality !== undefined) {
+    out.formality = assertFormality(options.formality, "--formality");
+  }
+  if (out.preset === undefined && out.formality === undefined) return undefined;
+  return out;
 }
 
 async function resolveInitFields(
@@ -143,6 +165,7 @@ async function resolveInitFields(
   const flagTargets = options.targetLangs !== undefined;
   const flagContent = options.content !== undefined;
   const flagOutput = options.output !== undefined;
+  const flagStyle = options.style !== undefined;
   const allFlags = flagSource && flagTargets && flagContent && flagOutput;
 
   let sourceLang = flagSource
@@ -161,6 +184,7 @@ async function resolveInitFields(
     ? normalizeRootPath((options.output ?? "").trim() || DEFAULT_CONFIG.outputRoot)
     : layout.outputRoot;
   let autoTranslate = false;
+  let style = styleFromFlags(options);
 
   if (allFlags) {
     assertSourceNotInTargets(sourceLang, targetLangs);
@@ -171,6 +195,7 @@ async function resolveInitFields(
       outputRoot,
       outputMode: layout.outputMode,
       autoTranslate: false,
+      ...(style ? { style } : {}),
       usedDefaultsWithoutTty: false,
     };
   }
@@ -198,6 +223,7 @@ async function resolveInitFields(
       outputRoot,
       outputMode: layout.outputMode,
       autoTranslate: false,
+      ...(style ? { style } : {}),
       usedDefaultsWithoutTty: true,
     };
   }
@@ -262,6 +288,21 @@ async function resolveInitFields(
       },
     )) as boolean;
 
+    if (!flagStyle) {
+      const presetAnswer = (await askUntilValid(
+        prompt,
+        `? Translation style preset (${STYLE_PRESETS.join("|")}, Enter = none): `,
+        (raw) => {
+          const trimmed = raw.trim();
+          if (trimmed === "") return "";
+          return assertStylePreset(trimmed, "style.preset");
+        },
+      )) as string | StylePreset;
+      if (presetAnswer !== "") {
+        style = { ...(style ?? {}), preset: presetAnswer as StylePreset };
+      }
+    }
+
     assertSourceNotInTargets(sourceLang, targetLangs);
     // Persist only after validation (autoTranslate already boolean).
     parseAutoTranslate(autoTranslate);
@@ -273,6 +314,7 @@ async function resolveInitFields(
       outputRoot,
       outputMode: layout.outputMode,
       autoTranslate,
+      ...(style ? { style } : {}),
       usedDefaultsWithoutTty: false,
     };
   } finally {
@@ -316,6 +358,7 @@ export async function runInit(
       outputMode: fields.outputMode,
       outputRoot: fields.outputRoot,
       autoTranslate: fields.autoTranslate,
+      ...(fields.style ? { style: fields.style } : {}),
     };
     writeConfig(root, config);
   }
@@ -337,12 +380,18 @@ export async function runInit(
     `  targetLangs: ${fields.targetLangs.length ? fields.targetLangs.join(", ") : "(none)"}`,
   );
   console.log(`  autoTranslate: ${fields.autoTranslate}`);
+  if (fields.style?.preset || fields.style?.formality) {
+    const parts: string[] = [];
+    if (fields.style.preset) parts.push(`preset=${fields.style.preset}`);
+    if (fields.style.formality) parts.push(`formality=${fields.style.formality}`);
+    console.log(`  style: ${parts.join(", ")}`);
+  }
   if (fields.autoTranslate) {
     console.log(
       "  note: autoTranslate is on — run `polygit sync` in your workflow; hooks stay opt-in (`polygit hooks install`).",
     );
   }
-  if (options.preset) console.log(`  preset: ${options.preset}`);
+  if (options.preset) console.log(`  layout preset: ${options.preset}`);
   console.log(`  created: ${CONFIG_FILENAME}, .tm/db.sqlite, .gitignore, .env.example`);
   if (createdGit) console.log("  created: git repository");
 }

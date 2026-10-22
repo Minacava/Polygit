@@ -15,6 +15,10 @@ export interface SyncOptions {
   provider?: ProviderName;
   model?: string;
   dryRun?: boolean;
+  /** CLI style preset override (passed to translate). */
+  style?: string;
+  /** CLI formality override (passed to translate). */
+  formality?: string;
   /** Test seam: inject a provider instead of creating one. */
   providerInstance?: import("../connectors/index.js").TranslationProvider;
 }
@@ -80,6 +84,8 @@ export async function runSync(options: SyncOptions = {}): Promise<{
     await runTranslate(lang, {
       ...(options.provider !== undefined ? { provider: options.provider } : {}),
       ...(options.model ? { model: options.model } : {}),
+      ...(options.style !== undefined ? { style: options.style } : {}),
+      ...(options.formality !== undefined ? { formality: options.formality } : {}),
       ...(options.providerInstance ? { providerInstance: options.providerInstance } : {}),
       // Avoid branch churn when syncing multiple languages.
       noBranch: true,
