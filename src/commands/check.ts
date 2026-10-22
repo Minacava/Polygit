@@ -9,13 +9,15 @@ import {
   type LayoutFields,
 } from "../core/layout.js";
 import {
+  computeStyleHash,
   openProjectDb,
   readConfig,
   requireProjectRoot,
   resolveInsideProject,
+  resolveStyle,
   type TmConfig,
 } from "../core/project.js";
-import { getStatusCounts } from "../core/repository.js";
+import { getStatusCounts, markStyleHashStale } from "../core/repository.js";
 
 export interface CheckOptions {
   /** When omitted, checks every language in config.targetLangs. */
@@ -31,12 +33,16 @@ export interface LangDocumentIssue {
   pending: number;
   stale: number;
   missingOutput: boolean;
+  /** Stale translations whose style_hash differs from the current style. */
+  styleChanged?: number;
 }
 
 export interface LangCheckResult {
   lang: string;
   pending: number;
   stale: number;
+  /** Segments marked/found stale due to style fingerprint mismatch. */
+  styleChanged: number;
   documents: LangDocumentIssue[];
 }
 
@@ -129,11 +135,35 @@ function resolveCheckLangs(config: TmConfig, langOption?: string): string[] {
   return config.targetLangs.map((l) => assertLangCode(l));
 }
 
+function countStyleChangedStale(
+  db: Database.Database,
+  lang: string,
+  currentHash: string | null,
+): Map<string, number> {
+  const byPath = new Map<string, number>();
+  if (currentHash === null) return byPath;
+  const rows = db
+    .prepare(
+      `SELECT d.path AS path, COUNT(*) AS n
+       FROM translations t
+       JOIN segments s ON s.id = t.segment_id
+       JOIN documents d ON d.id = s.document_id
+       WHERE t.lang = ?
+         AND t.status = 'stale'
+         AND (t.style_hash IS NULL OR t.style_hash != ?)
+       GROUP BY d.path`,
+    )
+    .all(lang, currentHash) as Array<{ path: string; n: number }>;
+  for (const row of rows) byPath.set(row.path, row.n);
+  return byPath;
+}
+
 function collectLangIssues(
   db: Database.Database,
   projectRoot: string,
   config: TmConfig,
   lang: string,
+  currentStyleHash: string | null,
 ): LangCheckResult {
   const layout: LayoutFields = {
     contentRoots: config.contentRoots,
@@ -141,6 +171,7 @@ function collectLangIssues(
     outputRoot: config.outputRoot,
   };
   const rows = getStatusCounts(db, lang);
+  const styleChangedByPath = countStyleChangedStale(db, lang, currentStyleHash);
   const documents: LangDocumentIssue[] = [];
 
   for (const row of rows) {
@@ -153,12 +184,14 @@ function collectLangIssues(
       missingOutput = true;
     }
 
+    const styleChanged = styleChangedByPath.get(row.path) ?? 0;
     if (row.pending > 0 || row.stale > 0 || missingOutput) {
       documents.push({
         path: row.path,
         pending: row.pending,
         stale: row.stale,
         missingOutput,
+        ...(styleChanged > 0 ? { styleChanged } : {}),
       });
     }
   }
@@ -167,6 +200,7 @@ function collectLangIssues(
     lang,
     pending: rows.reduce((n, r) => n + r.pending, 0),
     stale: rows.reduce((n, r) => n + r.stale, 0),
+    styleChanged: [...styleChangedByPath.values()].reduce((n, v) => n + v, 0),
     documents,
   };
 }
@@ -183,7 +217,13 @@ function formatHumanFailure(result: CheckResult): string {
     for (const doc of langResult.documents) {
       const parts: string[] = [];
       if (doc.pending > 0) parts.push(`pending=${doc.pending}`);
-      if (doc.stale > 0) parts.push(`stale=${doc.stale}`);
+      if (doc.stale > 0) {
+        const styleNote =
+          doc.styleChanged && doc.styleChanged > 0
+            ? ` (style changed=${doc.styleChanged})`
+            : "";
+        parts.push(`stale=${doc.stale}${styleNote}`);
+      }
       if (doc.missingOutput) parts.push("missing output file");
       lines.push(`  ${langResult.lang}: ${doc.path}  ${parts.join(" ")}`);
     }
@@ -201,8 +241,18 @@ export function runCheck(options: CheckOptions = {}): CheckResult {
   const langs = resolveCheckLangs(config, options.lang);
   const db = openProjectDb(root);
   try {
+    const styleHash = computeStyleHash(resolveStyle(config.style));
+    // Editing .tmconfig.json style (or config set) is reflected here before counting.
+    if (styleHash !== null) {
+      for (const lang of langs) {
+        markStyleHashStale(db, styleHash, lang);
+      }
+    }
+
     const drift = scanContentDrift(db, root, config, langs);
-    const byLang = langs.map((lang) => collectLangIssues(db, root, config, lang));
+    const byLang = langs.map((lang) =>
+      collectLangIssues(db, root, config, lang, styleHash),
+    );
     const ok =
       drift.newFiles.length === 0 &&
       drift.changedFiles.length === 0 &&

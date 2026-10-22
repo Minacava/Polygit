@@ -203,6 +203,8 @@ Untagged Ollama IDs (e.g. `llama3.2`) match tagged installs (e.g. `llama3.2:late
 
 Optional `style` steers tone via fixed presets inside polygit (`academic`, `startup`, `technical`, `marketing`, `legal`) plus `formality` (`formal` \| `informal` \| `auto`). Omit `style` entirely to keep the legacy translator prompt. One-off overrides: `translate` / `sync --style=… --formality=…` (CLI wins over config). Manage with `config get|set style.preset` / `style.formality`.
 
+Each translation stores a `style_hash`. Exact TM hits are reused only when the fingerprint matches the current style; changing preset/formality marks affected rows STALE (same idea as glossary sync). Projects with no `style` key are unchanged.
+
 | `outputMode` | `docs/getting-started.md` → `fr` |
 | --- | --- |
 | `mirror` | `locales/fr/getting-started.md` (with `"outputRoot": "locales"`) |

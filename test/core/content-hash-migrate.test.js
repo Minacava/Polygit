@@ -58,7 +58,7 @@ describe("documents.content_hash migration", () => {
     const db = openDatabase(root);
     const version = db.prepare(`SELECT version FROM schema_version LIMIT 1`).get();
     assert.equal(version.version, SCHEMA_VERSION);
-    assert.equal(SCHEMA_VERSION, 5);
+    assert.ok(SCHEMA_VERSION >= 5);
 
     const cols = db
       .prepare(`PRAGMA table_info(documents)`)
@@ -82,7 +82,7 @@ describe("documents.content_hash migration", () => {
     const db2 = openDatabase(root);
     assert.equal(
       db2.prepare(`SELECT version FROM schema_version LIMIT 1`).get().version,
-      5,
+      SCHEMA_VERSION,
     );
     assert.equal(
       db2.prepare(`SELECT path FROM documents WHERE id = ?`).get("doc-1").path,
