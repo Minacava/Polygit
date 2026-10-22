@@ -64,6 +64,8 @@ polygit config get style.preset
 
 Supported keys: `sourceLang`, `targetLangs`, `contentRoots`, `outputRoot`, `outputMode`, `autoTranslate`, `style.preset`, `style.formality`. Invalid values are rejected (same rules as reading config). Style presets and formality use closed lists (`academic`/`startup`/`technical`/`marketing`/`legal`; `formal`/`informal`/`auto`).
 
+Changing `style.preset` / `style.formality` marks translations whose stored `style_hash` differs as **stale** (approved text is kept until `translate` refreshes them; refreshed rows are unapproved). `check` reports those as `stale=… (style changed=…)`. Without a `style` block in config, style never marks anything stale.
+
 ---
 
 ## `clone`
@@ -326,7 +328,7 @@ Fails on:
 
 - **NEW** — supported files under `contentRoots` that are not in the DB (managed outputs excluded)
 - **CHANGED** — imported files whose content SHA-256 differs since last import (rows without a hash count as CHANGED)
-- **pending / stale** segments per language
+- **pending / stale** segments per language (including stale from a style change: `stale=N (style changed=…)`)
 - **missing output files** on disk for `toOutputPath`
 
 Without `--lang`, checks every language in `targetLangs`. If `targetLangs` is empty and `--lang` is omitted, exits with a clear error.

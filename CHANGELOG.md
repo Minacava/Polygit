@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Schema v6: `style_hash` on `translations` and `translation_memory` (v5→v6 keeps rows; NULL = unset style)
+- Style fingerprint: exact TM reuse only when `style_hash` matches; style changes mark mismatched translations STALE (`check` reports `style changed`); retranslate leaves them unapproved
+- Projects without `style` never mark translations stale for style
 - Configurable translation style: `.tmconfig.json` `style.preset` (`academic` | `startup` | `technical` | `marketing` | `legal`) and `style.formality` (`formal` | `informal` | `auto`); closed-list validation in `readConfig` / `config set`
 - `translate` / `sync` `--style` / `--formality` one-off overrides (CLI wins over config); omitted style keeps the legacy system prompt unchanged
 - `init` asks for a style preset (Enter = none) and accepts `--style` / `--formality`; `config get|set style.preset` / `style.formality`

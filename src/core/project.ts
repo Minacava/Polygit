@@ -30,6 +30,8 @@ export {
   resolveStyle,
   assertStylePreset,
   assertFormality,
+  computeStyleHash,
+  styleHashesMatch,
   type StylePreset,
   type Formality,
   type ResolvedStyle,

@@ -45,6 +45,8 @@ export interface TranslationRow {
   status: TranslationLangStatus;
   approved: number;
   updated_at: string;
+  /** Style fingerprint at last translate; null = unset / pre-style-hash rows. */
+  style_hash: string | null;
 }
 
 export interface TranslationMemoryRow {
@@ -56,6 +58,8 @@ export interface TranslationMemoryRow {
   updated_at: string;
   /** Whitespace-normalized source_text; used for indexed exact TM lookup. */
   source_norm: string;
+  /** Style fingerprint when this TM entry was written; null = unset. */
+  style_hash: string | null;
 }
 
 export interface GlossaryRow {
@@ -106,6 +110,7 @@ CREATE TABLE IF NOT EXISTS translations (
   status TEXT NOT NULL DEFAULT 'translated' CHECK (status IN ('translated', 'stale', 'approved')),
   approved INTEGER NOT NULL DEFAULT 0 CHECK (approved IN (0, 1)),
   updated_at TEXT NOT NULL,
+  style_hash TEXT,
   UNIQUE (segment_id, lang)
 );
 
@@ -123,7 +128,8 @@ CREATE TABLE IF NOT EXISTS translation_memory (
   lang TEXT NOT NULL,
   usage_count INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL,
-  source_norm TEXT NOT NULL
+  source_norm TEXT NOT NULL,
+  style_hash TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tm_lang_source_unique ON translation_memory(lang, source_text);
@@ -159,7 +165,7 @@ export function resolveDbPath(projectRoot: string): string {
  * Creates `.tm/` when missing.
  */
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * Ensure translation_memory.source_norm exists, is backfilled with normalizeText
@@ -240,6 +246,21 @@ function ensureDocumentsContentHash(db: Database.Database): void {
   }
 }
 
+/** Add style_hash columns (v5 → v6). Existing rows stay NULL (= unset style). */
+function ensureStyleHashColumns(db: Database.Database): void {
+  const trCols = db.prepare(`PRAGMA table_info(translations)`).all() as Array<{ name: string }>;
+  if (trCols.length > 0 && !trCols.some((c) => c.name === "style_hash")) {
+    db.exec(`ALTER TABLE translations ADD COLUMN style_hash TEXT`);
+  }
+
+  const tmCols = db.prepare(`PRAGMA table_info(translation_memory)`).all() as Array<{
+    name: string;
+  }>;
+  if (tmCols.length > 0 && !tmCols.some((c) => c.name === "style_hash")) {
+    db.exec(`ALTER TABLE translation_memory ADD COLUMN style_hash TEXT`);
+  }
+}
+
 function ensureSchemaUpgrades(db: Database.Database): void {
   // translations.status (per-language workflow)
   const trCols = db.prepare(`PRAGMA table_info(translations)`).all() as Array<{ name: string }>;
@@ -261,6 +282,7 @@ function ensureSchemaUpgrades(db: Database.Database): void {
 
   ensureTmSourceNorm(db);
   ensureDocumentsContentHash(db);
+  ensureStyleHashColumns(db);
 
   db.exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL PRIMARY KEY)`);
   const row = db.prepare(`SELECT version FROM schema_version LIMIT 1`).get() as
@@ -292,8 +314,14 @@ function ensureSchemaUpgrades(db: Database.Database): void {
     ensureDocumentsContentHash(db);
   }
 
-  if (row.version < SCHEMA_VERSION) {
+  if (row.version < 5) {
     ensureDocumentsContentHash(db);
+    db.prepare(`UPDATE schema_version SET version = ?`).run(5);
+    row.version = 5;
+  }
+
+  if (row.version < SCHEMA_VERSION) {
+    ensureStyleHashColumns(db);
     db.prepare(`UPDATE schema_version SET version = ?`).run(SCHEMA_VERSION);
   }
 }

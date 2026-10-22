@@ -1,3 +1,5 @@
+import { sha256Text } from "./hash.js";
+
 /** Translation style presets and formality. Preset text is fixed in code, never loaded from disk. */
 
 export const STYLE_PRESETS = [
@@ -169,4 +171,30 @@ export function buildStylePromptBlock(style: ResolvedStyle | undefined): string 
     lines.push(FORMALITY_INSTRUCTIONS[style.formality]);
   }
   return lines.join("\n");
+}
+
+/**
+ * Fingerprint of the effective style for TM reuse and stale detection.
+ * Returns null when there is no style (legacy / unset) — NULL in the DB.
+ * `guideText` is reserved for a project style guide (piece 3); omit when unused.
+ */
+export function computeStyleHash(
+  style: ResolvedStyle | undefined,
+  guideText?: string | null,
+): string | null {
+  if (!style) return null;
+  const preset = style.preset ?? "";
+  const formality = style.formality ?? "";
+  const guide = guideText ?? "";
+  return sha256Text(`preset:${preset}\nformality:${formality}\nguide:${guide}`);
+}
+
+/** Exact TM reuse only when both hashes match (including both unset). */
+export function styleHashesMatch(
+  stored: string | null | undefined,
+  current: string | null | undefined,
+): boolean {
+  const a = stored ?? null;
+  const b = current ?? null;
+  return a === b;
 }

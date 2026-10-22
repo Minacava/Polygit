@@ -3,7 +3,13 @@ import { stdin as input, stdout as output } from "node:process";
 import type { SegmentStatus } from "../core/db.js";
 import { assertLangCode } from "../core/lang.js";
 import { writeOutputDocuments } from "../core/output.js";
-import { openProjectDb, requireProjectRoot } from "../core/project.js";
+import {
+  computeStyleHash,
+  openProjectDb,
+  readConfig,
+  requireProjectRoot,
+  resolveStyle,
+} from "../core/project.js";
 import {
   countUnapprovedTranslations,
   listReviewSegments,
@@ -38,9 +44,10 @@ function tryApproveSegment(
   targetText: string | null | undefined,
   touchedDocs: Set<string>,
   documentPath: string,
+  styleHash: string | null = null,
 ): boolean {
   if (!targetText) return false;
-  upsertTranslation(db, segmentId, lang, targetText, "manual", true);
+  upsertTranslation(db, segmentId, lang, targetText, "manual", true, styleHash);
   touchedDocs.add(documentPath);
   return true;
 }
@@ -59,6 +66,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
   const db = openProjectDb(root);
   const touchedDocs = new Set<string>();
   const lang = options.lang;
+  const styleHash = computeStyleHash(resolveStyle(readConfig(root).style));
 
   try {
     const rows = listReviewSegments(db, {
@@ -75,7 +83,17 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
       let approved = 0;
       let skipped = 0;
       for (const row of rows) {
-        if (tryApproveSegment(db, row.id, lang, row.target_text, touchedDocs, row.document_path)) {
+        if (
+          tryApproveSegment(
+            db,
+            row.id,
+            lang,
+            row.target_text,
+            touchedDocs,
+            row.document_path,
+            styleHash,
+          )
+        ) {
           approved += 1;
         } else {
           skipped += 1;
@@ -125,6 +143,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
                   next.target_text,
                   touchedDocs,
                   next.document_path,
+                  styleHash,
                 )
               ) {
                 bulk += 1;
@@ -141,7 +160,17 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
           }
 
           if (answer === "a") {
-            if (!tryApproveSegment(db, row.id, lang, row.target_text, touchedDocs, row.document_path)) {
+            if (
+              !tryApproveSegment(
+                db,
+                row.id,
+                lang,
+                row.target_text,
+                touchedDocs,
+                row.document_path,
+                styleHash,
+              )
+            ) {
               console.log("No translation to approve.");
               continue;
             }
@@ -155,7 +184,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
               console.log("Empty edit ignored.\n");
               continue;
             }
-            upsertTranslation(db, row.id, lang, edited.trim(), "manual", true);
+            upsertTranslation(db, row.id, lang, edited.trim(), "manual", true, styleHash);
             touchedDocs.add(row.document_path);
             console.log("Saved and approved.\n");
           }
