@@ -16,6 +16,7 @@ polygit init --preset=vitepress      # docs/ + in-place-locale
 polygit init --preset=docusaurus
 polygit init --preset=json-i18n      # locales/ + in-place-locale
 polygit init --source-lang=en --target-langs=fr,es --content=docs --output=locales
+polygit init --style=startup --formality=formal
 ```
 
 | Flag | Description |
@@ -25,10 +26,12 @@ polygit init --source-lang=en --target-langs=fr,es --content=docs --output=local
 | `--target-langs <list>` | Comma-separated target languages |
 | `--content <dirs>` | Comma-separated content root folders |
 | `--output <dir>` | Translations folder (`outputRoot`) |
+| `--style <preset>` | Translation style: `academic` \| `startup` \| `technical` \| `marketing` \| `legal` |
+| `--formality <value>` | `formal` \| `informal` \| `auto` (default `auto` when a style is set) |
 
 - **All flags set:** writes config with no prompts.
 - **Some flags:** on a TTY, asks only for the missing values (validated with `assertLangCode` / `normalizeRootPath`; source cannot be a target).
-- **No flags + TTY:** step-by-step wizard (defaults in `[brackets]`; Enter accepts).
+- **No flags + TTY:** step-by-step wizard (defaults in `[brackets]`; Enter accepts). Includes an optional translation style preset (Enter = none).
 - **No TTY (CI/scripts):** uses defaults and prints a warning (same non-interactive behavior as before).
 - Explicit flags override `--preset` layout roots.
 - If `.tmconfig.json` already exists, init does not modify it.
@@ -49,6 +52,9 @@ polygit config set targetLangs fr,es
 polygit config set contentRoots docs,blog
 polygit config set outputMode sidecar
 polygit config set autoTranslate true
+polygit config set style.preset startup
+polygit config set style.formality formal
+polygit config get style.preset
 ```
 
 | Subcommand | Description |
@@ -56,7 +62,7 @@ polygit config set autoTranslate true
 | `get <key>` | Print a value (`targetLangs` / `contentRoots` as comma-separated) |
 | `set <key> <value>` | Validate and write a value |
 
-Supported keys: `sourceLang`, `targetLangs`, `contentRoots`, `outputRoot`, `outputMode`, `autoTranslate`. Invalid values are rejected (same rules as reading config).
+Supported keys: `sourceLang`, `targetLangs`, `contentRoots`, `outputRoot`, `outputMode`, `autoTranslate`, `style.preset`, `style.formality`. Invalid values are rejected (same rules as reading config). Style presets and formality use closed lists (`academic`/`startup`/`technical`/`marketing`/`legal`; `formal`/`informal`/`auto`).
 
 ---
 
@@ -107,6 +113,7 @@ polygit translate fr --provider=ollama --model=mistral
 polygit translate fr --doc=sources/intro.md
 polygit translate fr --dry-run
 polygit translate fr --accept-fuzzy
+polygit translate fr --style=academic --formality=formal
 ```
 
 | Flag / arg | Description |
@@ -115,6 +122,8 @@ polygit translate fr --accept-fuzzy
 | `--doc <path>` | Limit to one source document |
 | `--provider <name>` | `claude` \| `openai` \| `ollama` \| `huggingface` |
 | `--model <id>` | One-off model override |
+| `--style <preset>` | One-off style preset; overrides `.tmconfig.json` `style` for this run |
+| `--formality <value>` | One-off formality; overrides config for this run |
 | `--dry-run` | Plan only — no writes, no LLM calls |
 | `--accept-fuzzy` | Apply fuzzy TM as unapproved drafts (skip LLM) |
 | `--no-branch` | Do not auto-create/checkout `polygit/translate-<lang>-…` when on main/master |
@@ -129,6 +138,7 @@ Import **NEW** and **CHANGED** sources (same detection as `check`), then transla
 polygit sync
 polygit sync --lang=fr
 polygit sync --provider=ollama --model=mistral
+polygit sync --style=startup --formality=informal
 polygit sync --dry-run
 ```
 
@@ -137,6 +147,8 @@ polygit sync --dry-run
 | `--lang <lang>` | Translate only this language (default: all `targetLangs`) |
 | `--provider <name>` | `claude` \| `openai` \| `ollama` \| `huggingface` |
 | `--model <id>` | One-off model override |
+| `--style <preset>` | One-off style preset passed through to `translate` |
+| `--formality <value>` | One-off formality passed through to `translate` |
 | `--dry-run` | Show NEW/CHANGED files and target langs without writing |
 
 **Safeguard:** sync never marks translations approved. `publish` still requires `review` (or `--allow-unapproved`). Setting `autoTranslate: true` does not install hooks; use [`hooks install`](#hooks) explicitly if you want a pre-commit `check`.

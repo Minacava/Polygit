@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Configurable translation style: `.tmconfig.json` `style.preset` (`academic` | `startup` | `technical` | `marketing` | `legal`) and `style.formality` (`formal` | `informal` | `auto`); closed-list validation in `readConfig` / `config set`
+- `translate` / `sync` `--style` / `--formality` one-off overrides (CLI wins over config); omitted style keeps the legacy system prompt unchanged
+- `init` asks for a style preset (Enter = none) and accepts `--style` / `--formality`; `config get|set style.preset` / `style.formality`
 - `hooks install`: pre-commit resolves `./node_modules/.bin/polygit`, then PATH, then `npx --no-install`; clear error if missing; refuse-overwrite exits non-zero
 - `check`: print the failure summary once (no duplicated `Error:` line)
 - `check` / `sync`: skip symlinks under contentRoots with `skipped symlink: …` (do not fail the gate)

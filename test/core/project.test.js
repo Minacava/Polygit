@@ -40,6 +40,24 @@ describe("project", () => {
     assert.equal(config.outputMode, "mirror");
     assert.equal(config.outputRoot, "outputs");
     assert.equal(config.autoTranslate, false);
+    assert.equal(config.style, undefined);
+  });
+
+  it("round-trips optional style and rejects unknown presets", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-project-style-"));
+    writeConfig(root, {
+      ...DEFAULT_CONFIG,
+      targetLangs: ["fr"],
+      style: { preset: "startup", formality: "formal" },
+    });
+    assert.deepEqual(readConfig(root).style, { preset: "startup", formality: "formal" });
+
+    fs.writeFileSync(
+      path.join(root, ".tmconfig.json"),
+      JSON.stringify({ style: { preset: "casual" } }),
+      "utf8",
+    );
+    assert.throws(() => readConfig(root), /Unknown style\.preset/);
   });
 
   it("parses autoTranslate and rejects sourceLang in targetLangs", () => {
