@@ -47,6 +47,11 @@ program
   .option("--target-langs <list>", "Comma-separated target language codes")
   .option("--content <dirs>", "Comma-separated content root folders")
   .option("--output <dir>", "Folder for translations (outputRoot)")
+  .option(
+    "--style <preset>",
+    "Translation style: academic | startup | technical | marketing | legal",
+  )
+  .option("--formality <value>", "Formality: formal | informal | auto")
   .action(
     async (opts: {
       preset?: string;
@@ -54,6 +59,8 @@ program
       targetLangs?: string;
       content?: string;
       output?: string;
+      style?: string;
+      formality?: string;
     }) => {
       await runInit(process.cwd(), {
         ...(opts.preset ? { preset: opts.preset } : {}),
@@ -61,6 +68,8 @@ program
         ...(opts.targetLangs !== undefined ? { targetLangs: opts.targetLangs } : {}),
         ...(opts.content !== undefined ? { content: opts.content } : {}),
         ...(opts.output !== undefined ? { output: opts.output } : {}),
+        ...(opts.style !== undefined ? { style: opts.style } : {}),
+        ...(opts.formality !== undefined ? { formality: opts.formality } : {}),
         interactive: Boolean(process.stdin.isTTY),
       });
     },
@@ -73,7 +82,10 @@ const configCmd = program
 configCmd
   .command("get")
   .description("Print a config value")
-  .argument("<key>", "sourceLang | targetLangs | contentRoots | outputRoot | outputMode | autoTranslate")
+  .argument(
+    "<key>",
+    "sourceLang | targetLangs | contentRoots | outputRoot | outputMode | autoTranslate | style.preset | style.formality",
+  )
   .action((key: string) => {
     runConfigGet(key);
   });
@@ -81,8 +93,14 @@ configCmd
 configCmd
   .command("set")
   .description("Update a config value (validated like readConfig)")
-  .argument("<key>", "sourceLang | targetLangs | contentRoots | outputRoot | outputMode | autoTranslate")
-  .argument("<value>", "New value (comma-separated for lists; true/false for autoTranslate)")
+  .argument(
+    "<key>",
+    "sourceLang | targetLangs | contentRoots | outputRoot | outputMode | autoTranslate | style.preset | style.formality",
+  )
+  .argument(
+    "<value>",
+    "New value (comma-separated for lists; true/false for autoTranslate; style preset/formality enums)",
+  )
   .action((key: string, value: string) => {
     runConfigSet(key, value);
   });
@@ -136,7 +154,28 @@ program
     "Do not auto-create/checkout polygit/translate-<lang>-… when on main/master",
     false,
   )
-  .action(async (lang: string, opts: { doc?: string; provider?: string; model?: string; dryRun?: boolean; acceptFuzzy?: boolean; branch?: boolean }) => {
+  .option(
+    "--style <preset>",
+    "One-off style preset (academic | startup | technical | marketing | legal); overrides config",
+  )
+  .option(
+    "--formality <value>",
+    "One-off formality (formal | informal | auto); overrides config",
+  )
+  .action(
+    async (
+      lang: string,
+      opts: {
+        doc?: string;
+        provider?: string;
+        model?: string;
+        dryRun?: boolean;
+        acceptFuzzy?: boolean;
+        branch?: boolean;
+        style?: string;
+        formality?: string;
+      },
+    ) => {
     let provider: ProviderName | undefined;
     if (opts.provider !== undefined) {
       if (!isProviderName(opts.provider)) {
@@ -150,6 +189,8 @@ program
       ...(opts.doc ? { doc: opts.doc } : {}),
       ...(provider !== undefined ? { provider } : {}),
       ...(opts.model ? { model: opts.model } : {}),
+      ...(opts.style !== undefined ? { style: opts.style } : {}),
+      ...(opts.formality !== undefined ? { formality: opts.formality } : {}),
       dryRun: Boolean(opts.dryRun),
       acceptFuzzy: Boolean(opts.acceptFuzzy),
       // commander --no-branch sets branch: false
@@ -365,12 +406,22 @@ program
   .option("--lang <lang>", "Target language (default: all targetLangs)")
   .option("--provider <name>", "claude | openai | ollama | huggingface")
   .option("--model <id>", "Model id/tag for the selected provider")
+  .option(
+    "--style <preset>",
+    "One-off style preset (academic | startup | technical | marketing | legal); overrides config",
+  )
+  .option(
+    "--formality <value>",
+    "One-off formality (formal | informal | auto); overrides config",
+  )
   .option("--dry-run", "Show plan without importing or translating", false)
   .action(
     async (opts: {
       lang?: string;
       provider?: string;
       model?: string;
+      style?: string;
+      formality?: string;
       dryRun?: boolean;
     }) => {
       let provider: ProviderName | undefined;
@@ -386,6 +437,8 @@ program
         ...(opts.lang ? { lang: opts.lang } : {}),
         ...(provider !== undefined ? { provider } : {}),
         ...(opts.model ? { model: opts.model } : {}),
+        ...(opts.style !== undefined ? { style: opts.style } : {}),
+        ...(opts.formality !== undefined ? { formality: opts.formality } : {}),
         dryRun: Boolean(opts.dryRun),
       });
     },

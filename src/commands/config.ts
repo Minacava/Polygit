@@ -4,13 +4,18 @@ import {
   parseOutputRoot,
 } from "../core/layout.js";
 import {
+  assertFormality,
   assertSourceNotInTargets,
+  assertStylePreset,
   parseBoolFlag,
   parseLangCsv,
   parseSourceLang,
   readConfig,
   requireProjectRoot,
   writeConfig,
+  type Formality,
+  type StyleConfig,
+  type StylePreset,
   type TmConfig,
 } from "../core/project.js";
 
@@ -21,6 +26,8 @@ export const CONFIG_KEYS = [
   "outputRoot",
   "outputMode",
   "autoTranslate",
+  "style.preset",
+  "style.formality",
 ] as const;
 
 export type ConfigKey = (typeof CONFIG_KEYS)[number];
@@ -30,14 +37,45 @@ function isConfigKey(value: string): value is ConfigKey {
 }
 
 function formatValue(key: ConfigKey, config: TmConfig): string {
-  const value = config[key];
-  if (Array.isArray(value)) return value.join(",");
-  if (typeof value === "boolean") return value ? "true" : "false";
-  return String(value);
+  switch (key) {
+    case "style.preset":
+      return config.style?.preset ?? "";
+    case "style.formality":
+      return config.style?.formality ?? "";
+    case "sourceLang":
+    case "targetLangs":
+    case "contentRoots":
+    case "outputRoot":
+    case "outputMode":
+    case "autoTranslate": {
+      const value = config[key];
+      if (Array.isArray(value)) return value.join(",");
+      if (typeof value === "boolean") return value ? "true" : "false";
+      return String(value);
+    }
+    default: {
+      const _exhaustive: never = key;
+      throw new Error(`Unsupported config key: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+function withStyle(config: TmConfig, patch: StyleConfig): TmConfig {
+  const nextStyle: StyleConfig = { ...config.style, ...patch };
+  if (nextStyle.preset === undefined && nextStyle.formality === undefined) {
+    const { style: _omit, ...rest } = config;
+    return { ...rest };
+  }
+  return { ...config, style: nextStyle };
 }
 
 function applyConfigValue(config: TmConfig, key: ConfigKey, raw: string): TmConfig {
-  const next: TmConfig = { ...config, contentRoots: [...config.contentRoots], targetLangs: [...config.targetLangs] };
+  const next: TmConfig = {
+    ...config,
+    contentRoots: [...config.contentRoots],
+    targetLangs: [...config.targetLangs],
+    ...(config.style ? { style: { ...config.style } } : {}),
+  };
 
   switch (key) {
     case "sourceLang":
@@ -63,6 +101,14 @@ function applyConfigValue(config: TmConfig, key: ConfigKey, raw: string): TmConf
     case "autoTranslate":
       next.autoTranslate = parseBoolFlag(raw, "autoTranslate");
       break;
+    case "style.preset": {
+      const preset: StylePreset = assertStylePreset(raw.trim(), "style.preset");
+      return withStyle(next, { preset });
+    }
+    case "style.formality": {
+      const formality: Formality = assertFormality(raw.trim(), "style.formality");
+      return withStyle(next, { formality });
+    }
     default: {
       const _exhaustive: never = key;
       throw new Error(`Unsupported config key: ${String(_exhaustive)}`);

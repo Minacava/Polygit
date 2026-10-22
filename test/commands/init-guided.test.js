@@ -53,11 +53,12 @@ describe("init guided configuration", () => {
         sourceLang: "en",
         content: "sources",
         output: "outputs",
-        prompt: queuePrompt(["fr,de", "y"]),
+        prompt: queuePrompt(["fr,de", "y", ""]),
       });
       const config = readConfig(root);
       assert.deepEqual(config.targetLangs, ["fr", "de"]);
       assert.equal(config.autoTranslate, true);
+      assert.equal(config.style, undefined);
     } finally {
       process.chdir(prev);
     }
@@ -76,6 +77,7 @@ describe("init guided configuration", () => {
           "",
           "",
           "n",
+          "",
         ]),
       });
       const config = readConfig(root);
@@ -84,6 +86,7 @@ describe("init guided configuration", () => {
       assert.deepEqual(config.contentRoots, ["sources"]);
       assert.equal(config.outputRoot, "outputs");
       assert.equal(config.autoTranslate, false);
+      assert.equal(config.style, undefined);
     } finally {
       process.chdir(prev);
     }

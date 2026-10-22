@@ -15,6 +15,7 @@ import {
   readConfig,
   requireProjectRoot,
   resolveInsideProject,
+  resolveStyle,
   toPosixRelative,
   writeConfig,
 } from "../core/project.js";
@@ -49,6 +50,10 @@ export interface TranslateOptions {
    * Skip auto-creating/checking out `polygit/translate-<lang>-…` when on main/master.
    */
   noBranch?: boolean;
+  /** CLI style preset override (wins over config). */
+  style?: string;
+  /** CLI formality override (wins over config). */
+  formality?: string;
 }
 
 export async function runTranslate(lang: string, options: TranslateOptions = {}): Promise<void> {
@@ -58,6 +63,10 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
     await ensureTranslationBranch(root, lang);
   }
   const config = readConfig(root);
+  const resolvedStyle = resolveStyle(config.style, {
+    ...(options.style !== undefined ? { style: options.style } : {}),
+    ...(options.formality !== undefined ? { formality: options.formality } : {}),
+  });
   const providerName: ProviderName = options.provider ?? config.defaultProvider;
   const modelChoice = await resolveTranslateModel(providerName, config, options.model);
 
@@ -182,6 +191,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
             {
               glossary,
               documentPath: segment.document_path,
+              ...(resolvedStyle ? { style: resolvedStyle } : {}),
               ...(attempt > 0
                 ? {
                     notes:

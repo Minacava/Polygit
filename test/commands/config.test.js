@@ -30,12 +30,15 @@ describe("config get/set", () => {
       assert.equal(runConfigGet("sourceLang"), "en");
       assert.equal(runConfigGet("targetLangs"), "fr");
       assert.equal(runConfigGet("autoTranslate"), "false");
+      assert.equal(runConfigGet("style.preset"), "");
 
       runConfigSet("targetLangs", "fr,es");
       runConfigSet("contentRoots", "docs,blog");
       runConfigSet("outputMode", "sidecar");
       runConfigSet("outputRoot", "locales");
       runConfigSet("autoTranslate", "true");
+      runConfigSet("style.preset", "startup");
+      runConfigSet("style.formality", "auto");
 
       const config = readConfig(process.cwd());
       assert.deepEqual(config.targetLangs, ["fr", "es"]);
@@ -43,6 +46,7 @@ describe("config get/set", () => {
       assert.equal(config.outputMode, "sidecar");
       assert.equal(config.outputRoot, "locales");
       assert.equal(config.autoTranslate, true);
+      assert.deepEqual(config.style, { preset: "startup", formality: "auto" });
     });
   });
 
@@ -54,6 +58,8 @@ describe("config get/set", () => {
       assert.throws(() => runConfigSet("outputMode", "nope"), /outputMode/);
       assert.throws(() => runConfigSet("autoTranslate", "maybe"), /Invalid autoTranslate/);
       assert.throws(() => runConfigSet("sourceLang", "fr"), /must not appear in targetLangs/);
+      assert.throws(() => runConfigSet("style.preset", "casual"), /Unknown style\.preset/);
+      assert.throws(() => runConfigSet("style.formality", "polite"), /Unknown style\.formality/);
     });
   });
 
