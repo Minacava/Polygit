@@ -152,7 +152,6 @@ program
   .option(
     "--no-branch",
     "Do not auto-create/checkout polygit/translate-<lang>-… when on main/master",
-    false,
   )
   .option(
     "--style <preset>",
@@ -193,7 +192,8 @@ program
       ...(opts.formality !== undefined ? { formality: opts.formality } : {}),
       dryRun: Boolean(opts.dryRun),
       acceptFuzzy: Boolean(opts.acceptFuzzy),
-      // commander --no-branch sets branch: false
+      // Commander --no-* defaults branch=true; --no-branch sets branch=false.
+      // Do not pass a custom default of false — that made noBranch always true.
       noBranch: opts.branch === false,
     });
   });
@@ -239,7 +239,6 @@ program
   .option(
     "--no-branch",
     "Do not auto-create/checkout polygit/translate-<lang>-… when on main/master",
-    false,
   )
   .action(
     async (opts: {
@@ -262,6 +261,7 @@ program
       ...(opts.lang ? { lang: opts.lang } : {}),
       ...(status ? { status } : {}),
       approveAll: Boolean(opts.approveAll),
+      // Commander --no-* defaults branch=true; --no-branch sets branch=false.
       noBranch: opts.branch === false,
     });
   },

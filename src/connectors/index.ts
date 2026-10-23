@@ -43,6 +43,7 @@ export {
   parseProviderName,
   PROVIDER_NAMES,
   redactSecrets,
+  sanitizeLlmTranslation,
 } from "./provider.js";
 export { createChatCompletionsProvider } from "./chat-completions.js";
 export { createClaudeProvider } from "./claude.js";

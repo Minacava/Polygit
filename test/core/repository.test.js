@@ -81,6 +81,31 @@ describe("repository", () => {
     db.close();
   });
 
+  it("status without lang counts approved from translations", () => {
+    const root = tempProject();
+    const db = openDatabase(root);
+    const doc = upsertDocument(db, "sources/hello.md", "markdown");
+    replaceDocumentSegments(db, doc, [
+      { orderIndex: 0, sourceText: "Hello." },
+      { orderIndex: 1, sourceText: "World." },
+    ]);
+    const segments = db
+      .prepare(`SELECT id FROM segments WHERE document_id = ? ORDER BY order_index`)
+      .all(doc.id);
+
+    upsertTranslation(db, segments[0].id, "fr", "Bonjour.", "llm", true);
+    upsertTranslation(db, segments[1].id, "fr", "Monde.", "llm", true);
+
+    const rollup = getStatusCounts(db);
+    assert.equal(rollup[0]?.approved, 2);
+    assert.equal(rollup[0]?.translated, 0);
+    assert.equal(rollup[0]?.pending, 0);
+
+    const perLang = getStatusCounts(db, "fr");
+    assert.equal(perLang[0]?.approved, 2);
+    db.close();
+  });
+
   it("counts approved vs unapproved translations for publish gate", () => {
     const root = tempProject();
     const db = openDatabase(root);

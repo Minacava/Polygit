@@ -607,14 +607,40 @@ export function getStatusCounts(
     const total = totalRow.n;
 
     if (!lang) {
-      const rows = db
+      // Approvals live on translations, not segments. Roll up per segment across
+      // all langs so `status` without --lang shows real approved counts.
+      const segments = db
+        .prepare(`SELECT id, status FROM segments WHERE document_id = ?`)
+        .all(doc.id) as Array<{ id: string; status: SegmentStatus }>;
+      const translationRows = db
         .prepare(
-          `SELECT status, COUNT(*) AS n FROM segments WHERE document_id = ? GROUP BY status`,
+          `SELECT t.segment_id AS segment_id, t.status AS status
+           FROM translations t
+           JOIN segments s ON s.id = t.segment_id
+           WHERE s.document_id = ?`,
         )
-        .all(doc.id) as Array<{ status: SegmentStatus; n: number }>;
+        .all(doc.id) as Array<{ segment_id: string; status: TranslationLangStatus }>;
+      const bySegment = new Map<string, TranslationLangStatus[]>();
+      for (const row of translationRows) {
+        const list = bySegment.get(row.segment_id) ?? [];
+        list.push(row.status);
+        bySegment.set(row.segment_id, list);
+      }
       const counts = { pending: 0, translated: 0, stale: 0, approved: 0, total };
-      for (const row of rows) {
-        counts[row.status] = row.n;
+      for (const seg of segments) {
+        const statuses = bySegment.get(seg.id);
+        if (!statuses || statuses.length === 0) {
+          if (seg.status === "stale") counts.stale += 1;
+          else if (seg.status === "translated" || seg.status === "approved") {
+            counts.translated += 1;
+          } else {
+            counts.pending += 1;
+          }
+          continue;
+        }
+        if (statuses.some((s) => s === "stale")) counts.stale += 1;
+        else if (statuses.every((s) => s === "approved")) counts.approved += 1;
+        else counts.translated += 1;
       }
       return { path: doc.path, ...counts };
     }

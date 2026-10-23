@@ -15,7 +15,9 @@ describe("placeholders", () => {
     assert.ok(found.includes("%s"));
     assert.ok(found.includes("<b>"));
     assert.ok(found.includes("</b>"));
-    assert.ok(found.includes("[x](http://y)"));
+    // Link text may change; only the destination is required.
+    assert.ok(found.includes("http://y"));
+    assert.ok(!found.includes("[x](http://y)"));
   });
 
   it("detects missing placeholders in a bad translation", () => {
@@ -24,8 +26,15 @@ describe("placeholders", () => {
     assert.equal(placeholdersPreserved(source, bad), false);
     const missing = missingPlaceholders(source, bad);
     assert.ok(missing.includes("{name}"));
-    assert.ok(missing.some((m) => m.includes("docs")));
+    assert.ok(missing.includes("https://ex.com"));
     assert.ok(missing.includes("<br/>"));
+  });
+
+  it("accepts translated link text when the URL is preserved", () => {
+    const source = "See [docs](https://ex.com/guide) for details.";
+    const good = "Voir [la documentation](https://ex.com/guide) pour plus de détails.";
+    assert.equal(placeholdersPreserved(source, good), true);
+    assert.deepEqual(missingPlaceholders(source, good), []);
   });
 
   it("accepts translations that keep every token", () => {

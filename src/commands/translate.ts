@@ -257,7 +257,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
                 ? {
                     notes:
                       `Previous translation dropped required placeholders: ${missing.join(", ")}. ` +
-                      `Preserve every placeholder, HTML tag, and link exactly.`,
+                      `Preserve every placeholder, HTML tag, and link/image URL exactly (link text may change).`,
                   }
                 : {}),
             },
