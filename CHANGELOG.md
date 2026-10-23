@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.5
+
 - Fix: strip echoed `<TRANSLATION_DOCUMENT>` delimiters from LLM translations (and tell the model not to copy them)
 - Fix: `--no-branch` no longer defaults to on — auto `polygit/translate-*` branches work again on main/master
 - Fix: placeholder check allows translated Markdown link/image text; only destinations (URLs/paths) must match
