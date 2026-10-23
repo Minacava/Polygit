@@ -38,7 +38,7 @@ export function runStatus(options: { lang?: string } = {}): void {
     console.log(
       options.lang
         ? `\nTranslation status (lang=${options.lang})\n`
-        : "\nTranslation status (segment rollup)\n",
+        : "\nTranslation status (all languages)\n",
     );
     for (const row of rows) {
       console.log(row.path);

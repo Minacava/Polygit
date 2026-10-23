@@ -7,6 +7,7 @@ import {
   isProviderName,
   parseProviderName,
   redactSecrets,
+  sanitizeLlmTranslation,
 } from "../../dist/connectors/provider.js";
 
 describe("provider helpers", () => {
@@ -46,6 +47,22 @@ describe("provider helpers", () => {
     assert.match(data, /Welcome/);
     // Path is metadata outside the data block.
     assert.match(user.slice(0, start), /sources\/attack\.md/);
+  });
+
+  it("strips echoed TRANSLATION_DOCUMENT delimiters from model output", () => {
+    const wrapped =
+      `${DOCUMENT_DATA_START}\nBonjour le monde\n${DOCUMENT_DATA_END}`;
+    assert.equal(sanitizeLlmTranslation(wrapped), "Bonjour le monde");
+    assert.equal(
+      sanitizeLlmTranslation(`"${DOCUMENT_DATA_START}Hola${DOCUMENT_DATA_END}"`),
+      "Hola",
+    );
+    assert.equal(sanitizeLlmTranslation("  plain text  "), "plain text");
+  });
+
+  it("asks the model not to echo delimiter tags", () => {
+    const messages = buildTranslationMessages("Hello", "en", "fr");
+    assert.match(messages[0]?.content ?? "", /Do not copy the <TRANSLATION_DOCUMENT>/);
   });
 
   it("recognizes provider names", () => {

@@ -77,6 +77,8 @@ export function buildTranslationMessages(
     `Translate from ${sourceLang} to ${targetLang}.`,
     "Return only the translated text, with no quotes or commentary.",
     "Preserve Markdown syntax, placeholders, HTML tags, and ICU/message format tokens.",
+    "You may translate visible link text; keep link and image destinations (URLs/paths) unchanged.",
+    `Do not copy the ${DOCUMENT_DATA_START} or ${DOCUMENT_DATA_END} delimiter tags into your output.`,
     glossaryLines
       ? `Use these glossary terms consistently:\n${glossaryLines}`
       : "Respect established product terminology when obvious from context.",
@@ -109,6 +111,24 @@ export function buildTranslationMessages(
 /** Keep document path metadata from looking like prompt control instructions. */
 function sanitizeDocumentPath(documentPath: string): string {
   return documentPath.replace(/[\r\n\0]+/g, " ").slice(0, 500);
+}
+
+/**
+ * Strip prompt delimiter tags that models sometimes echo into the translation.
+ * Also drops a single pair of wrapping quotes some models add.
+ */
+export function sanitizeLlmTranslation(text: string): string {
+  let out = text.replace(/\r\n/g, "\n").trim();
+  // Remove every occurrence (models wrap, prefix, or echo mid-output).
+  out = out.split(DOCUMENT_DATA_START).join("").split(DOCUMENT_DATA_END).join("");
+  out = out.trim();
+  if (
+    (out.startsWith('"') && out.endsWith('"')) ||
+    (out.startsWith("'") && out.endsWith("'"))
+  ) {
+    out = out.slice(1, -1).trim();
+  }
+  return out;
 }
 
 /** Redact likely API keys from error strings before printing. */

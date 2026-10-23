@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix: strip echoed `<TRANSLATION_DOCUMENT>` delimiters from LLM translations (and tell the model not to copy them)
+- Fix: `--no-branch` no longer defaults to on — auto `polygit/translate-*` branches work again on main/master
+- Fix: placeholder check allows translated Markdown link/image text; only destinations (URLs/paths) must match
+- Fix: `status` without `--lang` reports approved counts from translations (not segment rows that never become approved)
+
 ## 1.2.4
 
 - `style.paths` / `style.langs` overlays (max 64 each): resolve CLI > longest path prefix > lang > global; fingerprint per document so only affected rows go STALE

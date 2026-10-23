@@ -2,6 +2,7 @@ import { fetchJson, HttpJsonError } from "../http/fetch-json.js";
 import {
   buildTranslationMessages,
   redactSecrets,
+  sanitizeLlmTranslation,
   type ChatMessage,
   type TranslateContext,
   type TranslationProvider,
@@ -89,7 +90,10 @@ export function createClaudeProvider(
       targetLang: string,
       context?: TranslateContext,
     ): Promise<string> {
-      return complete(buildTranslationMessages(text, sourceLang, targetLang, context));
+      const raw = await complete(
+        buildTranslationMessages(text, sourceLang, targetLang, context),
+      );
+      return sanitizeLlmTranslation(raw);
     },
 
     complete,
