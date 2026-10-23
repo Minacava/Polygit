@@ -1,6 +1,6 @@
 {
   "name": "polygit",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Local-first translation CLI: translation memory + glossary in Git, LLM only for new text (Claude, OpenAI, Ollama, Hugging Face), approve in terminal, ship as a PR/MR.",
   "license": "MIT",
   "author": "Marina Camacho",
