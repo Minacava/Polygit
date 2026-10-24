@@ -156,6 +156,17 @@ program
     false,
   )
   .option(
+    "--concurrency <n>",
+    "Parallel LLM requests (1-16)",
+    (v: string) => {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 1 || n > 16) {
+        throw new Error("--concurrency must be an integer from 1 to 16");
+      }
+      return n;
+    },
+  )
+  .option(
     "--no-branch",
     "Do not auto-create/checkout polygit/<lang>-YYYYMMDD when on main/master",
   )
@@ -177,6 +188,7 @@ program
         dryRun?: boolean;
         acceptFuzzy?: boolean;
         addLang?: boolean;
+        concurrency?: number;
         branch?: boolean;
         style?: string;
         formality?: string;
@@ -191,6 +203,9 @@ program
       }
       provider = opts.provider;
     }
+    const envConcurrency = process.env.POLYGIT_CONCURRENCY
+      ? Number(process.env.POLYGIT_CONCURRENCY)
+      : undefined;
     await runTranslate(lang, {
       ...(opts.doc ? { doc: opts.doc } : {}),
       ...(provider !== undefined ? { provider } : {}),
@@ -200,6 +215,14 @@ program
       dryRun: Boolean(opts.dryRun),
       acceptFuzzy: Boolean(opts.acceptFuzzy),
       addLang: Boolean(opts.addLang),
+      ...(typeof opts.concurrency === "number"
+        ? { concurrency: opts.concurrency }
+        : typeof envConcurrency === "number" &&
+            Number.isInteger(envConcurrency) &&
+            envConcurrency >= 1 &&
+            envConcurrency <= 16
+          ? { concurrency: envConcurrency }
+          : {}),
       // Commander --no-* defaults branch=true; --no-branch sets branch=false.
       // Do not pass a custom default of false — that made noBranch always true.
       noBranch: opts.branch === false,
@@ -289,7 +312,7 @@ program
 
 program
   .command("commit")
-  .description("Commit configured content roots and translation outputs")
+  .description("Commit translation outputs (and optionally sources)")
   .option("--yes", "Skip confirmation", false)
   .option("--message <message>", "Commit message")
   .option(
@@ -297,10 +320,21 @@ program
     "Generate the commit message from the diff with the configured LLM",
     false,
   )
-  .action(async (opts: { yes?: boolean; message?: string; ai?: boolean }) => {
+  .option(
+    "--include-sources",
+    "Also stage source edits under contentRoots",
+    false,
+  )
+  .action(async (opts: {
+    yes?: boolean;
+    message?: string;
+    ai?: boolean;
+    includeSources?: boolean;
+  }) => {
     await runCommit({
       yes: Boolean(opts.yes),
       ai: Boolean(opts.ai),
+      includeSources: Boolean(opts.includeSources),
       ...(opts.message ? { message: opts.message } : {}),
     });
   });
@@ -476,11 +510,22 @@ program
     "Fail when translated segments are not yet approved",
     false,
   )
-  .action((opts: { lang?: string; json?: boolean; requireApproved?: boolean }) => {
+  .option(
+    "--hook",
+    "Pre-commit mode: warn on NEW/CHANGED sources instead of failing",
+    false,
+  )
+  .action((opts: {
+    lang?: string;
+    json?: boolean;
+    requireApproved?: boolean;
+    hook?: boolean;
+  }) => {
     runCheck({
       ...(opts.lang ? { lang: opts.lang } : {}),
       json: Boolean(opts.json),
       requireApproved: Boolean(opts.requireApproved),
+      hook: Boolean(opts.hook),
     });
   });
 

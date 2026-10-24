@@ -16,7 +16,10 @@ interface TagsResponse {
 }
 
 export function getOllamaHost(): string {
-  return (process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434").replace(/\/$/, "");
+  let h = (process.env.OLLAMA_HOST ?? "").trim() || "127.0.0.1:11434";
+  if (!/^https?:\/\//i.test(h)) h = `http://${h}`;
+  h = h.replace("://0.0.0.0", "://127.0.0.1");
+  return h.replace(/\/+$/, "");
 }
 
 /**

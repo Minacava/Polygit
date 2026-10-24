@@ -200,6 +200,7 @@ export function sanitizeLlmTranslation(text: string, source = ""): string {
 export function redactSecrets(message: string): string {
   // More-specific prefixes first so they are not swallowed by the generic sk- rule.
   return message
+    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@\/]+:)[^\s@\/]+@/gi, "$1***@")
     .replace(/sk-ant-[a-zA-Z0-9_-]{10,}/g, "sk-ant-***")
     .replace(/sk-proj-[a-zA-Z0-9_-]{10,}/g, "sk-proj-***")
     .replace(/sk-[a-zA-Z0-9_-]{10,}/g, "sk-***")

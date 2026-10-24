@@ -21,6 +21,16 @@
 - Fix (PG-17): skip unknown formats; transactional import; skip JSON identifier values
 - Fix (PG-24): review defaults to unapproved; `--status pending` = missing row; confirm bulk approve
 - Fix (PG-25): `translate` requires `--add-lang` when the language is outside targetLangs
+- Fix (PG-18..23): Markdown fences (`~~~` / length), `1)` lists, blockquotes, ref defs, MDX/JSX, `{#id}`, indented code, CRLF preserve; sentence split via `Intl.Segmenter`
+- Fix (PG-26/29): normalize `OLLAMA_HOST`; auto-pick a single tagged default Ollama variant
+- Fix (PG-30): SQLite `busy_timeout = 5000`
+- Fix (PG-31): HTTP timeouts throw a clear origin + timeout error (no silent retry-forever)
+- Fix (PG-32): work-branch date uses local calendar day
+- Fix (PG-33): forge token trust via `POLYGIT_FORGE_HOSTS` / `--confirm-forge-host` (not repo `forgeHosts`)
+- Fix (PG-34): `check --hook` warns on NEW/CHANGED; pre-commit uses it; `commit` stages outputs only (`--include-sources` opt-in)
+- Fix (PG-35): CI runs on `release/**` with Node 20/22 matrix + CLI smoke
+- Fix (PG-36): npm publish runs typecheck/test/build and `--provenance`; omit `dist/**/*.map` from the tarball
+- Fix (PG-37..44): path `..` segment checks; URL userinfo redaction; `import --root` refuses unknown roots; `translate --concurrency` / `POLYGIT_CONCURRENCY`
 
 ## 1.2.6
 

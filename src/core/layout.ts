@@ -103,7 +103,7 @@ export function normalizeRootPath(raw: string): string {
   if (
     !normalized ||
     normalized === "." ||
-    normalized.includes("..") ||
+    normalized.split("/").includes("..") ||
     normalized.startsWith("/") ||
     normalized.includes("//")
   ) {
@@ -270,15 +270,16 @@ export function isManagedOutputPath(
     if (matchContentRoot(posix, config.contentRoots) === null) return false;
     const base = path.posix.basename(posix);
     const ext = path.posix.extname(base);
-    const stem = ext ? base.slice(0, -ext.length) : base;
-    return langs.some((lang) => stem.endsWith(`.${lang}`));
+    const stem = (ext ? base.slice(0, -ext.length) : base).toLowerCase();
+    return langs.some((lang) => stem.endsWith(`.${lang.toLowerCase()}`));
   }
 
-  // in-place-locale: contentRoot/<lang>/…
+  // in-place-locale: contentRoot/<lang>/… (case-insensitive lang segment)
+  const posixLower = posix.toLowerCase();
   for (const root of config.contentRoots) {
     for (const lang of langs) {
-      const prefix = `${root}/${lang}`;
-      if (posix === prefix || posix.startsWith(`${prefix}/`)) return true;
+      const prefix = `${root}/${lang}`.toLowerCase();
+      if (posixLower === prefix || posixLower.startsWith(`${prefix}/`)) return true;
     }
   }
   return false;

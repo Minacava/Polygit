@@ -87,12 +87,12 @@ describe("detectForgeFromRemoteUrl", () => {
     assert.equal(ref.webBase, "https://gitlab.example.com");
   });
 
-  it("allows GitHub Enterprise with --forge and forgeHosts allowlist", () => {
+  it("allows GitHub Enterprise with --forge and confirmUntrustedHost", () => {
     const ref = detectForgeFromRemoteUrl(
       "https://github.mycompany.com/acme/docs.git",
       {
         forge: "github",
-        allowedHosts: ["github.mycompany.com"],
+        confirmUntrustedHost: true,
       },
     );
     assert.equal(ref.kind, "github");
@@ -100,6 +100,22 @@ describe("detectForgeFromRemoteUrl", () => {
     assert.equal(ref.name, "docs");
     assert.equal(ref.host, "github.mycompany.com");
     assert.equal(ref.webBase, "https://github.mycompany.com");
+  });
+
+  it("allows GitHub Enterprise via POLYGIT_FORGE_HOSTS", () => {
+    const prev = process.env.POLYGIT_FORGE_HOSTS;
+    process.env.POLYGIT_FORGE_HOSTS = "github.mycompany.com";
+    try {
+      const ref = detectForgeFromRemoteUrl(
+        "https://github.mycompany.com/acme/docs.git",
+        { forge: "github" },
+      );
+      assert.equal(ref.kind, "github");
+      assert.equal(ref.host, "github.mycompany.com");
+    } finally {
+      if (prev === undefined) delete process.env.POLYGIT_FORGE_HOSTS;
+      else process.env.POLYGIT_FORGE_HOSTS = prev;
+    }
   });
 
   it("rejects unknown forge hosts without --forge", () => {

@@ -13,7 +13,7 @@ export function resolveInsideProject(projectRoot: string, inputPath: string): st
   const root = path.resolve(projectRoot);
   const absolute = path.resolve(root, inputPath);
   const rel = path.relative(root, absolute);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+  if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
     throw new Error(`Path escapes project root: ${inputPath}`);
   }
   assertNoSymlinks(root, rel, inputPath);

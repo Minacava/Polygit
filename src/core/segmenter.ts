@@ -86,8 +86,24 @@ export function segmentProse(text: string): RawSegment[] {
   return segments;
 }
 
-function splitSentences(text: string): string[] {
-  // Simple splitter: end punctuation followed by whitespace and an uppercase / quote.
-  const parts = text.split(/(?<=[.!?…])\s+(?=["'“‘(\[]*[A-ZÀ-ÖØ-Þ])/u);
-  return parts.length > 0 ? parts : [text];
+const ABBR =
+  /\b(?:e\.g|i\.e|etc|vs|Mr|Mrs|Ms|Dr|Prof|Inc|Ltd|No|Fig|cf|approx)\.$/i;
+
+function splitSentences(text: string, lang = "en"): string[] {
+  try {
+    const segmenter = new Intl.Segmenter(lang, { granularity: "sentence" });
+    const out: string[] = [];
+    for (const { segment } of segmenter.segment(text)) {
+      if (out.length && ABBR.test(out[out.length - 1]!.trimEnd())) {
+        out[out.length - 1] += segment;
+      } else {
+        out.push(segment);
+      }
+    }
+    const trimmed = out.map((s) => s.trim()).filter(Boolean);
+    return trimmed.length > 0 ? trimmed : [text];
+  } catch {
+    const parts = text.split(/(?<=[.!?…])\s+(?=["'“‘(\[]*[A-ZÀ-ÖØ-Þ])/u);
+    return parts.length > 0 ? parts : [text];
+  }
 }

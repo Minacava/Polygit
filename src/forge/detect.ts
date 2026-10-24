@@ -181,21 +181,33 @@ function resolveForgeKind(host: string, options: DetectForgeOptions): ForgeKind 
     return trusted;
   }
 
-  const allowed = isAllowedForgeHost(host, options.allowedHosts ?? []);
+  // Repo .tmconfig.json forgeHosts no longer grants token trust (PG-33).
+  // Prefer POLYGIT_FORGE_HOSTS or explicit --confirm-forge-host.
+  const envHosts = (process.env.POLYGIT_FORGE_HOSTS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if ((options.allowedHosts?.length ?? 0) > 0) {
+    console.warn(
+      "forgeHosts in .tmconfig.json no longer grants token trust; " +
+        "set POLYGIT_FORGE_HOSTS or pass --confirm-forge-host.",
+    );
+  }
+  const allowed = isAllowedForgeHost(host, envHosts);
   const confirmed = Boolean(options.confirmUntrustedHost) || allowed;
 
   if (!options.forge) {
     throw new Error(
       `Cannot detect forge for host "${normalizeForgeHostname(host)}". ` +
         `Only github.com and gitlab.com are trusted automatically. ` +
-        `Pass --forge=github|gitlab and confirm the host (or add it to forgeHosts in .tmconfig.json).`,
+        `Pass --forge=github|gitlab and --confirm-forge-host (or set POLYGIT_FORGE_HOSTS).`,
     );
   }
 
   if (!confirmed) {
     throw new Error(
       `Refusing to send forge credentials to untrusted host "${normalizeForgeHostname(host)}". ` +
-        `Add it to forgeHosts in .tmconfig.json, or pass --confirm-forge-host after verifying the remote.`,
+        `Set POLYGIT_FORGE_HOSTS or pass --confirm-forge-host after verifying the remote.`,
     );
   }
 

@@ -39,6 +39,11 @@ export interface CheckOptions {
    * Pending/stale already fail without this flag.
    */
   requireApproved?: boolean;
+  /**
+   * Pre-commit mode: warn on NEW/CHANGED sources instead of failing, so authors
+   * can commit source edits before re-importing (PG-34).
+   */
+  hook?: boolean;
 }
 
 export interface LangDocumentIssue {
@@ -364,9 +369,15 @@ export function runCheck(options: CheckOptions = {}): CheckResult {
         requireApproved,
       ),
     );
+    const hookMode = Boolean(options.hook);
+    if (hookMode && (drift.newFiles.length > 0 || drift.changedFiles.length > 0)) {
+      console.warn(
+        `check --hook: source drift detected (not blocking commit): NEW=${drift.newFiles.join(",") || "none"} CHANGED=${drift.changedFiles.join(",") || "none"}`,
+      );
+    }
     const ok =
-      drift.newFiles.length === 0 &&
-      drift.changedFiles.length === 0 &&
+      (hookMode ||
+        (drift.newFiles.length === 0 && drift.changedFiles.length === 0)) &&
       drift.deletedFiles.length === 0 &&
       byLang.every((l) => l.documents.length === 0);
 
@@ -374,8 +385,8 @@ export function runCheck(options: CheckOptions = {}): CheckResult {
     const result: CheckResult = {
       ok,
       langs,
-      newFiles: drift.newFiles,
-      changedFiles: drift.changedFiles,
+      newFiles: hookMode ? [] : drift.newFiles,
+      changedFiles: hookMode ? [] : drift.changedFiles,
       deletedFiles: drift.deletedFiles,
       byLang,
       ...(primary

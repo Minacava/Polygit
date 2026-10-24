@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { runImport } from "../../dist/commands/import.js";
 import { runInit } from "../../dist/commands/init.js";
-import { readConfig } from "../../dist/core/project.js";
+import { readConfig, writeConfig } from "../../dist/core/project.js";
 
 describe("import", () => {
   it("rejects paths outside contentRoots", async () => {
@@ -39,7 +39,7 @@ describe("import", () => {
     }
   });
 
-  it("imports --root and persists it into contentRoots", async () => {
+  it("imports --root when already in contentRoots; refuses unknown roots", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-import-root-"));
     const prev = process.cwd();
     process.chdir(root);
@@ -47,11 +47,14 @@ describe("import", () => {
       await runInit();
       fs.mkdirSync(path.join(root, "docs"), { recursive: true });
       fs.writeFileSync(path.join(root, "docs", "intro.md"), "Hello docs.\n", "utf8");
+      assert.throws(
+        () => runImport(undefined, { root: "docs" }),
+        /not in contentRoots/i,
+      );
+      writeConfig(root, { ...readConfig(root), contentRoots: ["docs"] });
       const results = runImport(undefined, { root: "docs" });
       assert.equal(results.length, 1);
       assert.equal(results[0].path, "docs/intro.md");
-      const config = readConfig(root);
-      assert.ok(config.contentRoots.includes("docs"));
     } finally {
       process.chdir(prev);
     }

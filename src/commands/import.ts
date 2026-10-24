@@ -93,9 +93,10 @@ export function runImport(
   if (options.root) {
     const rootRel = normalizeRootPath(options.root);
     if (!matchContentRoot(rootRel, contentRoots)) {
-      contentRoots = [...contentRoots, rootRel];
-      writeConfig(projectRoot, { ...config, contentRoots });
-      console.log(`Added "${rootRel}" to contentRoots in .tmconfig.json`);
+      throw new Error(
+        `${rootRel} is not in contentRoots (${contentRoots.join(", ")}). ` +
+          `Run: polygit config set contentRoots ${[...contentRoots, rootRel].join(",")}`,
+      );
     }
   }
 
