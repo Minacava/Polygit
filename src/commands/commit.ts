@@ -14,6 +14,8 @@ export interface CommitOptions {
   message?: string;
   /** Generate the commit message with the configured LLM from the diff. */
   ai?: boolean;
+  /** Also stage source edits under contentRoots (default: outputs only). */
+  includeSources?: boolean;
   /** Test seam: inject LLM provider for --ai. */
   providerInstance?: TranslationProvider;
 }
@@ -57,7 +59,9 @@ export async function runCommit(options: CommitOptions = {}): Promise<void> {
     }
   }
 
-  const result = await commitSourcesAndOutputs(root, message);
+  const result = await commitSourcesAndOutputs(root, message, {
+    includeSources: Boolean(options.includeSources),
+  });
   if (!result.committed) {
     console.log(result.message);
     return;

@@ -252,9 +252,20 @@ async function resolvePublishForgeRepo(
 ): Promise<ForgeRepoRef> {
   const host = peekRemoteHostname(remoteUrl);
   let confirmUntrustedHost = Boolean(options.confirmForgeHost);
+  const envHosts = (process.env.POLYGIT_FORGE_HOSTS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (forgeHosts.length > 0) {
+    console.warn(
+      "forgeHosts in .tmconfig.json no longer grants token trust; " +
+        "set POLYGIT_FORGE_HOSTS or pass --confirm-forge-host.",
+    );
+  }
 
   if (!isTrustedForgeHost(host) && !confirmUntrustedHost) {
-    const allowlisted = forgeHosts.some(
+    const allowlisted = envHosts.some(
       (entry) => normalizeForgeHostname(entry) === normalizeForgeHostname(host),
     );
     if (!allowlisted) {
@@ -262,7 +273,7 @@ async function resolvePublishForgeRepo(
         throw new Error(
           `Cannot detect forge for host "${host}". ` +
             `Only github.com and gitlab.com are trusted automatically. ` +
-            `Pass --forge=github|gitlab and confirm the host (or add it to forgeHosts in .tmconfig.json).`,
+            `Pass --forge=github|gitlab and --confirm-forge-host (or set POLYGIT_FORGE_HOSTS).`,
         );
       }
       confirmUntrustedHost = await confirmUntrustedForgeHost(host, options.forge);
@@ -271,7 +282,7 @@ async function resolvePublishForgeRepo(
 
   return detectForgeFromRemoteUrl(remoteUrl, {
     ...(options.forge ? { forge: options.forge } : {}),
-    allowedHosts: forgeHosts,
+    allowedHosts: envHosts,
     confirmUntrustedHost,
   });
 }
@@ -283,7 +294,7 @@ async function confirmUntrustedForgeHost(
   if (!process.stdin.isTTY) {
     throw new Error(
       `Refusing to send forge credentials to untrusted host "${host}". ` +
-        `Add it to forgeHosts in .tmconfig.json, or pass --confirm-forge-host after verifying the remote.`,
+        `Set POLYGIT_FORGE_HOSTS or pass --confirm-forge-host after verifying the remote.`,
     );
   }
 

@@ -35,8 +35,12 @@ describe("log", () => {
       });
       assert.equal(commits.length, 1);
       assert.match(commits[0].message, /translate\(fr\): add greeting/);
-      assert.ok(commits[0].files?.some((f) => f.includes("sources/")));
+      // Default commit stages outputs only (PG-32).
       assert.ok(commits[0].files?.some((f) => f.includes("outputs/")));
+      assert.equal(
+        commits[0].files?.some((f) => f.includes("sources/")),
+        false,
+      );
 
       // runLog should not throw
       await runLog({ limit: 5, stat: true });

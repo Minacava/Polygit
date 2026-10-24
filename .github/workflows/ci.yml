@@ -3,17 +3,21 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "release/**"]
 
 jobs:
   verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ matrix.node }}
           cache: npm
 
       - name: Install dependencies
@@ -30,3 +34,6 @@ jobs:
         # Linux Node 20 in Actions. Skip --experimental-test-coverage here —
         # on Node 20 it can exit 1 after all tests pass (coverage reporter bug).
         run: npm test
+
+      - name: CLI smoke
+        run: node dist/cli.js --version
