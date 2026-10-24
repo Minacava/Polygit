@@ -3,13 +3,16 @@ import { checkoutBranch, getCurrentBranch } from "./git.js";
 
 const PROTECTED = new Set(["main", "master"]);
 
-/** `polygit/translate-fr-20261021` */
+/**
+ * Short work-branch name: `polygit/fr-20261021`.
+ * (Legacy form `polygit/translate-fr-YYYYMMDD` is still recognized.)
+ */
 export function translationBranchName(
   lang: string,
   now = new Date(),
 ): string {
   const day = now.toISOString().slice(0, 10).replace(/-/g, "");
-  const name = `polygit/translate-${lang.trim().toLowerCase()}-${day}`;
+  const name = `polygit/${lang.trim().toLowerCase()}-${day}`;
   return assertSafeGitBranch(name);
 }
 
@@ -17,12 +20,22 @@ export function isProtectedBranch(branch: string): boolean {
   return PROTECTED.has(branch.trim());
 }
 
-/** True for `polygit/translate-fr` or `polygit/translate-fr-20261021`. */
+/**
+ * True for current `polygit/<lang>-YYYYMMDD` and legacy
+ * `polygit/translate-<lang>` / `polygit/translate-<lang>-YYYYMMDD`.
+ */
 export function isTranslationBranchForLang(branch: string, lang: string): boolean {
   const b = branch.trim();
   const code = lang.trim().toLowerCase();
-  const prefix = `polygit/translate-${code}`;
-  return b === prefix || b.startsWith(`${prefix}-`);
+  // Require `-YYYYMMDD` so `polygit/fr-…` cannot match unrelated `polygit/fr*`.
+  if (new RegExp(`^polygit/${escapeRegex(code)}-\\d{8}$`).test(b)) return true;
+  const legacyExact = `polygit/translate-${code}`;
+  const legacyPrefix = `polygit/translate-${code}-`;
+  return b === legacyExact || b.startsWith(legacyPrefix);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export interface EnsureTranslationBranchResult {
@@ -33,8 +46,8 @@ export interface EnsureTranslationBranchResult {
 
 /**
  * Ensure translation/review work happens off main/master.
- * - Already on a polygit/translate-<lang>* branch → stay
- * - On main/master → create/checkout today's polygit/translate-<lang>-YYYYMMDD
+ * - Already on a polygit/<lang>-* (or legacy translate-*) branch → stay
+ * - On main/master → create/checkout today's polygit/<lang>-YYYYMMDD
  * - On any other branch → stay (do not hijack the user's feature branch)
  */
 export async function ensureTranslationBranch(
@@ -73,7 +86,7 @@ export async function ensureTranslationBranch(
 
 /**
  * Resolve which branch to push for publish.
- * Prefer an explicit --branch, else current polygit/translate-<lang>* branch,
+ * Prefer an explicit --branch, else current polygit/<lang>-* branch,
  * else a fresh dated name.
  */
 export function resolvePublishSourceBranch(

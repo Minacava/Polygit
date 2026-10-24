@@ -52,7 +52,7 @@ export interface TranslateOptions {
   /** Max LLM retries when placeholders are dropped (default 1 retry). */
   placeholderRetries?: number;
   /**
-   * Skip auto-creating/checking out `polygit/translate-<lang>-…` when on main/master.
+   * Skip auto-creating/checking out `polygit/<lang>-YYYYMMDD` when on main/master.
    */
   noBranch?: boolean;
   /** CLI style preset override (wins over config). */

@@ -14,7 +14,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const DIST_CLI = path.join(ROOT, "dist", "cli.js");
 
 describe("cli --no-branch default", () => {
-  it("translate without --no-branch creates a polygit/translate-* branch on main", async () => {
+  it("translate without --no-branch creates a polygit/<lang>-* branch on main", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-nobranch-"));
     const prev = process.cwd();
     process.chdir(tmp);
@@ -46,10 +46,7 @@ describe("cli --no-branch default", () => {
         },
       );
       assert.equal(translate.status, 0, translate.stderr || translate.stdout);
-      assert.match(
-        await getCurrentBranch(tmp),
-        /^polygit\/translate-fr-\d{8}$/,
-      );
+      assert.match(await getCurrentBranch(tmp), /^polygit\/fr-\d{8}$/);
     } finally {
       process.chdir(prev);
     }

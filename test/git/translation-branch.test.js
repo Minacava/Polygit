@@ -17,14 +17,21 @@ import { getCurrentBranch } from "../../dist/git/git.js";
 describe("translation-branch", () => {
   it("names and detects polygit translation branches", () => {
     const name = translationBranchName("fr", new Date("2026-10-21T12:00:00Z"));
-    assert.equal(name, "polygit/translate-fr-20261021");
+    assert.equal(name, "polygit/fr-20261021");
     assert.equal(isTranslationBranchForLang(name, "fr"), true);
     assert.equal(isTranslationBranchForLang(name, "es"), false);
+    // Legacy names still count as translation branches for that lang.
+    assert.equal(isTranslationBranchForLang("polygit/translate-fr-20261021", "fr"), true);
+    assert.equal(isTranslationBranchForLang("polygit/translate-fr", "fr"), true);
     assert.equal(isProtectedBranch("main"), true);
     assert.equal(isProtectedBranch("feature/x"), false);
   });
 
   it("resolvePublishSourceBranch prefers current polygit branch", () => {
+    assert.equal(
+      resolvePublishSourceBranch("fr", "polygit/fr-20261021"),
+      "polygit/fr-20261021",
+    );
     assert.equal(
       resolvePublishSourceBranch("fr", "polygit/translate-fr-20261021"),
       "polygit/translate-fr-20261021",
@@ -35,7 +42,7 @@ describe("translation-branch", () => {
     );
     assert.match(
       resolvePublishSourceBranch("fr", "main"),
-      /^polygit\/translate-fr-\d{8}$/,
+      /^polygit\/fr-\d{8}$/,
     );
   });
 
@@ -59,7 +66,7 @@ describe("translation-branch", () => {
 
       const result = await ensureTranslationBranch(root, "fr");
       assert.equal(result.switched, true);
-      assert.match(result.branch, /^polygit\/translate-fr-\d{8}$/);
+      assert.match(result.branch, /^polygit\/fr-\d{8}$/);
       assert.equal(await getCurrentBranch(root), result.branch);
 
       const again = await ensureTranslationBranch(root, "fr");

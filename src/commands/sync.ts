@@ -64,7 +64,9 @@ export async function runSync(options: SyncOptions = {}): Promise<{
   }
 
   if (options.dryRun) {
-    console.log(`[dry-run] sync would import ${toImport.length} file(s):`);
+    console.log(
+      `[dry-run] sync would import ${toImport.length} ${toImport.length === 1 ? "file" : "files"}:`,
+    );
     for (const rel of toImport) {
       const kind = drift.newFiles.includes(rel) ? "NEW" : "CHANGED";
       console.log(`  ${kind}  ${rel}`);
@@ -74,7 +76,9 @@ export async function runSync(options: SyncOptions = {}): Promise<{
     return { imported: toImport, langs, dryRun: true };
   }
 
-  console.log(`sync: importing ${toImport.length} file(s)…`);
+  console.log(
+    `sync: importing ${toImport.length} ${toImport.length === 1 ? "file" : "files"}…`,
+  );
   for (const rel of toImport) {
     runImport(rel);
   }
