@@ -378,16 +378,31 @@ function walkDir(
   }
 }
 
+export interface ExpandImportOptions {
+  root?: string;
+  extensions?: readonly string[];
+  /** When set with `targetLangs`, managed translation outputs are excluded. */
+  layout?: LayoutFields;
+  targetLangs?: readonly string[];
+}
+
 /**
  * Expand a user path or glob into posix-relative file paths inside the project.
  * Supports `*`, `?`, and `**` without external dependencies.
+ * Managed translation outputs (sidecar / in-place-locale / mirror) are skipped
+ * when `layout` + `targetLangs` are provided so re-import does not treat
+ * translated files as new sources.
  */
 export function expandImportTargets(
   projectRoot: string,
   pattern: string,
-  options: { root?: string; extensions?: readonly string[] } = {},
+  options: ExpandImportOptions = {},
 ): string[] {
   const exts = options.extensions ?? CONTENT_EXTENSIONS;
+  const langs = options.targetLangs ?? [];
+  const layout = options.layout;
+  const notOutput = (p: string): boolean =>
+    !(layout && langs.length > 0 && isManagedOutputPath(p, layout, langs));
 
   if (options.root) {
     const rootRel = normalizeRootPath(options.root);
@@ -395,7 +410,7 @@ export function expandImportTargets(
     if (!fs.existsSync(absRoot) || !fs.statSync(absRoot).isDirectory()) {
       throw new Error(`Import root not found or not a directory: ${rootRel}`);
     }
-    return listContentFiles(projectRoot, [rootRel], exts);
+    return listContentFiles(projectRoot, [rootRel], exts).filter(notOutput);
   }
 
   const normalized = pattern.replace(/\\/g, "/").replace(/^\.\/+/, "");
@@ -404,7 +419,13 @@ export function expandImportTargets(
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
       throw new Error(`File not found: ${pattern}`);
     }
-    return [toPosixRelative(projectRoot, abs)];
+    const rel = toPosixRelative(projectRoot, abs);
+    if (!notOutput(rel)) {
+      throw new Error(
+        `${rel} is a polygit output; refusing to import it as a source.`,
+      );
+    }
+    return [rel];
   }
 
   const base = globSearchRoot(normalized);
@@ -421,7 +442,7 @@ export function expandImportTargets(
   }
 
   const matcher = compileGlob(normalized);
-  return candidates.filter((p) => matcher(p)).sort();
+  return candidates.filter((p) => matcher(p) && notOutput(p)).sort();
 }
 
 function walkAllFiles(absDir: string, projectRoot: string, out: string[]): void {

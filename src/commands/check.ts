@@ -8,6 +8,7 @@ import {
   toOutputPath,
   type LayoutFields,
 } from "../core/layout.js";
+import { missingPlaceholders } from "../core/placeholders.js";
 import {
   computeStyleHash,
   hasStyleConfig,
@@ -19,7 +20,12 @@ import {
   resolveStyleForDocument,
   type TmConfig,
 } from "../core/project.js";
-import { getStatusCounts, markStyleHashStaleByExpected } from "../core/repository.js";
+import {
+  getSegmentsForDocument,
+  getStatusCounts,
+  getTranslationMap,
+  markStyleHashStaleByExpected,
+} from "../core/repository.js";
 
 export interface CheckOptions {
   /** When omitted, checks every language in config.targetLangs. */
@@ -28,6 +34,11 @@ export interface CheckOptions {
   quiet?: boolean;
   /** Print machine-readable JSON to stdout (for CI). */
   json?: boolean;
+  /**
+   * Fail when translated segments are not yet approved (translated but approved=0).
+   * Pending/stale already fail without this flag.
+   */
+  requireApproved?: boolean;
 }
 
 export interface LangDocumentIssue {
@@ -37,6 +48,10 @@ export interface LangDocumentIssue {
   missingOutput: boolean;
   /** Stale translations whose style_hash differs from the current style. */
   styleChanged?: number;
+  /** Translated but not approved (only when --require-approved). */
+  unapproved?: number;
+  /** Translations that fail the placeholder integrity check. */
+  placeholderFailed?: number;
 }
 
 export interface LangCheckResult {
@@ -161,12 +176,45 @@ function countStyleChangedStale(
   return byPath;
 }
 
+function countPlaceholderFailures(
+  db: Database.Database,
+  documentId: string,
+  lang: string,
+): number {
+  const segments = getSegmentsForDocument(db, documentId);
+  const translations = getTranslationMap(db, documentId, lang);
+  let n = 0;
+  for (const seg of segments) {
+    const tr = translations.get(seg.id);
+    if (!tr) continue;
+    if (missingPlaceholders(seg.source_text, tr.target_text).length > 0) n += 1;
+  }
+  return n;
+}
+
+function countUnapprovedTranslated(
+  db: Database.Database,
+  documentId: string,
+  lang: string,
+): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM translations t
+       JOIN segments s ON s.id = t.segment_id
+       WHERE s.document_id = ? AND t.lang = ?
+         AND t.approved = 0 AND t.status = 'translated'`,
+    )
+    .get(documentId, lang) as { n: number };
+  return row.n;
+}
+
 function collectLangIssues(
   db: Database.Database,
   projectRoot: string,
   config: TmConfig,
   lang: string,
   expectedHashForDocument: ((documentPath: string) => string | null) | null,
+  requireApproved: boolean,
 ): LangCheckResult {
   const layout: LayoutFields = {
     contentRoots: config.contentRoots,
@@ -176,6 +224,15 @@ function collectLangIssues(
   const rows = getStatusCounts(db, lang);
   const styleChangedByPath = countStyleChangedStale(db, lang, expectedHashForDocument);
   const documents: LangDocumentIssue[] = [];
+
+  const docIds = new Map(
+    (
+      db.prepare(`SELECT id, path FROM documents`).all() as Array<{
+        id: string;
+        path: string;
+      }>
+    ).map((d) => [d.path, d.id]),
+  );
 
   for (const row of rows) {
     let missingOutput = false;
@@ -188,13 +245,26 @@ function collectLangIssues(
     }
 
     const styleChanged = styleChangedByPath.get(row.path) ?? 0;
-    if (row.pending > 0 || row.stale > 0 || missingOutput) {
+    const docId = docIds.get(row.path);
+    const placeholderFailed = docId ? countPlaceholderFailures(db, docId, lang) : 0;
+    const unapproved =
+      requireApproved && docId ? countUnapprovedTranslated(db, docId, lang) : 0;
+
+    if (
+      row.pending > 0 ||
+      row.stale > 0 ||
+      missingOutput ||
+      placeholderFailed > 0 ||
+      unapproved > 0
+    ) {
       documents.push({
         path: row.path,
         pending: row.pending,
         stale: row.stale,
         missingOutput,
         ...(styleChanged > 0 ? { styleChanged } : {}),
+        ...(unapproved > 0 ? { unapproved } : {}),
+        ...(placeholderFailed > 0 ? { placeholderFailed } : {}),
       });
     }
   }
@@ -226,6 +296,12 @@ function formatHumanFailure(result: CheckResult): string {
             ? ` (style changed=${doc.styleChanged})`
             : "";
         parts.push(`stale=${doc.stale}${styleNote}`);
+      }
+      if (doc.unapproved && doc.unapproved > 0) {
+        parts.push(`unapproved=${doc.unapproved}`);
+      }
+      if (doc.placeholderFailed && doc.placeholderFailed > 0) {
+        parts.push(`placeholder_failed=${doc.placeholderFailed}`);
       }
       if (doc.missingOutput) parts.push("missing output file");
       lines.push(`  ${langResult.lang}: ${doc.path}  ${parts.join(" ")}`);
@@ -264,8 +340,16 @@ export function runCheck(options: CheckOptions = {}): CheckResult {
     }
 
     const drift = scanContentDrift(db, root, config, langs);
+    const requireApproved = Boolean(options.requireApproved);
     const byLang = langs.map((lang) =>
-      collectLangIssues(db, root, config, lang, expectedForLang(lang)),
+      collectLangIssues(
+        db,
+        root,
+        config,
+        lang,
+        expectedForLang(lang),
+        requireApproved,
+      ),
     );
     const ok =
       drift.newFiles.length === 0 &&

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import { sha256Text } from "./hash.js";
 import {
   getDocumentByPath,
   getSegmentsForDocument,
@@ -9,6 +10,53 @@ import {
 import { getParser } from "../parsers/index.js";
 import { toOutputPath } from "./layout.js";
 import { readConfig, resolveInsideProject } from "./project.js";
+import { normalizeText } from "./segmenter.js";
+import type { DocumentRow, SegmentRow, TranslationRow } from "./db.js";
+
+function assertSourceMatchesImport(
+  relativePath: string,
+  document: DocumentRow,
+  raw: string,
+): void {
+  if (document.content_hash == null) return;
+  if (sha256Text(raw) === document.content_hash) return;
+  throw new Error(
+    `${relativePath} changed since import. Run "polygit import ${relativePath}" first.`,
+  );
+}
+
+/**
+ * Build order_index → target text, preferring source-text match over position
+ * so a drifted parse cannot silently shift translations.
+ * Translations marked `needs_fix` keep the source text on disk.
+ */
+function buildTranslationMap(
+  segments: SegmentRow[],
+  translations: Map<string, TranslationRow>,
+  parsedSegments: Array<{ orderIndex: number; sourceText: string }>,
+): Map<number, string> {
+  const bySource = new Map<string, string>();
+  const byOrder = new Map<number, string>();
+  for (const segment of segments) {
+    const tr = translations.get(segment.id);
+    // `needs_fix` is reserved for placeholder failures (PG-11); until that
+    // status is in the schema CHECK, compare via string for forward-compat.
+    const useSource = !tr || String(tr.status) === "needs_fix";
+    const text = useSource ? segment.source_text : tr!.target_text;
+    byOrder.set(segment.order_index, text);
+    bySource.set(normalizeText(segment.source_text), text);
+  }
+
+  const map = new Map<number, string>();
+  for (const seg of parsedSegments) {
+    const key = normalizeText(seg.sourceText);
+    map.set(
+      seg.orderIndex,
+      bySource.get(key) ?? byOrder.get(seg.orderIndex) ?? seg.sourceText,
+    );
+  }
+  return map;
+}
 
 /** Rebuild translated files according to layout (mirror / sidecar / in-place-locale). */
 export function writeOutputDocuments(
@@ -35,21 +83,14 @@ export function writeOutputDocuments(
       throw new Error(`Source file missing: ${relativePath}`);
     }
 
+    const raw = fs.readFileSync(absSource, "utf8");
+    assertSourceMatchesImport(relativePath, document, raw);
+
     const parser = getParser(document.format);
-    const parsed = parser.parse(fs.readFileSync(absSource, "utf8"));
+    const parsed = parser.parse(raw);
     const segments = getSegmentsForDocument(db, document.id);
     const translations = getTranslationMap(db, document.id, lang);
-
-    const byOrder = new Map<number, string>();
-    for (const segment of segments) {
-      const tr = translations.get(segment.id);
-      byOrder.set(segment.order_index, tr?.target_text ?? segment.source_text);
-    }
-
-    const map = new Map<number, string>();
-    for (const seg of parsed.segments) {
-      map.set(seg.orderIndex, byOrder.get(seg.orderIndex) ?? seg.sourceText);
-    }
+    const map = buildTranslationMap(segments, translations, parsed.segments);
 
     const outputRel = toOutputPath(relativePath, lang, config);
     const absOut = resolveInsideProject(projectRoot, outputRel);
@@ -84,21 +125,14 @@ export function assertApprovedOutputsOnDisk(
       throw new Error(`Source file missing before publish: ${relativePath}`);
     }
 
+    const raw = fs.readFileSync(absSource, "utf8");
+    assertSourceMatchesImport(relativePath, document, raw);
+
     const parser = getParser(document.format);
-    const parsed = parser.parse(fs.readFileSync(absSource, "utf8"));
+    const parsed = parser.parse(raw);
     const segments = getSegmentsForDocument(db, document.id);
     const translations = getTranslationMap(db, document.id, lang);
-
-    const byOrder = new Map<number, string>();
-    for (const segment of segments) {
-      const tr = translations.get(segment.id);
-      byOrder.set(segment.order_index, tr?.target_text ?? segment.source_text);
-    }
-
-    const map = new Map<number, string>();
-    for (const seg of parsed.segments) {
-      map.set(seg.orderIndex, byOrder.get(seg.orderIndex) ?? seg.sourceText);
-    }
+    const map = buildTranslationMap(segments, translations, parsed.segments);
 
     const expected = parser.serialize(parsed.skeleton, map);
     const outputRel = toOutputPath(relativePath, lang, config);
