@@ -7,6 +7,30 @@
 - Fix (PG-03): publish / review “all approved” counts segments without a translation row
 - Fix (PG-05): re-key segment ids on source edits so identical re-imports stay unchanged
 - Fix (PG-04): `check` fails on broken placeholders; `--require-approved` fails on unapproved translations
+- Fix (PG-06): translate continues after LLM errors, writes partial outputs, exits 1
+- Fix (PG-07): `translate --dry-run` no longer creates/checkouts a work branch
+- Fix (PG-08/09): safer quote stripping; strip `<think>` blocks and translation preambles
+- Fix (PG-10/11): stronger placeholder checks; failed checks mark `needs_fix` and keep source on disk
+- Fix (PG-12): TM exact reuse only from approved entries; review updates TM
+- Fix (PG-28): reject truncated Claude/OpenAI completions (`max_tokens` / `finish_reason=length`)
+- Schema v7: `translations.status` includes `needs_fix`; `translation_memory.approved`
+- Fix (PG-13): glossary sync stales only the term’s language and retranslates each affected lang
+- Fix (PG-14): `prune` / sync remove deleted sources; check reports DELETED
+- Fix (PG-15): translate writes skeleton outputs for empty docs; warn on unterminated front matter
+- Fix (PG-16): `import` accepts directories and multiple paths
+- Fix (PG-17): skip unknown formats; transactional import; skip JSON identifier values
+- Fix (PG-24): review defaults to unapproved; `--status pending` = missing row; confirm bulk approve
+- Fix (PG-25): `translate` requires `--add-lang` when the language is outside targetLangs
+- Fix (PG-18..23): Markdown fences (`~~~` / length), `1)` lists, blockquotes, ref defs, MDX/JSX, `{#id}`, indented code, CRLF preserve; sentence split via `Intl.Segmenter`
+- Fix (PG-26/29): normalize `OLLAMA_HOST`; auto-pick a single tagged default Ollama variant
+- Fix (PG-30): SQLite `busy_timeout = 5000`
+- Fix (PG-31): HTTP timeouts throw a clear origin + timeout error (no silent retry-forever)
+- Fix (PG-32): work-branch date uses local calendar day
+- Fix (PG-33): forge token trust via `POLYGIT_FORGE_HOSTS` / `--confirm-forge-host` (not repo `forgeHosts`)
+- Fix (PG-34): `check --hook` warns on NEW/CHANGED; pre-commit uses it; `commit` stages outputs only (`--include-sources` opt-in)
+- Fix (PG-35): CI runs on `release/**` with Node 20/22 matrix + CLI smoke
+- Fix (PG-36): npm publish runs typecheck/test/build and `--provenance`; omit `dist/**/*.map` from the tarball
+- Fix (PG-37..44): path `..` segment checks; URL userinfo redaction; `import --root` refuses unknown roots; `translate --concurrency` / `POLYGIT_CONCURRENCY`
 
 ## 1.2.6
 

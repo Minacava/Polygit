@@ -66,6 +66,14 @@ export async function resolveModel(
       if (installed.length === 1 && installed[0]) {
         return { model: installed[0].name, source: "auto" };
       }
+      // Prefer a single tagged variant of the default model (e.g. llama3.2:3b).
+      const base = DEFAULT_MODELS.ollama;
+      const variants = installed
+        .map((m) => m.name)
+        .filter((n) => n === base || n.startsWith(`${base}:`));
+      if (variants.length === 1 && variants[0]) {
+        return { model: variants[0], source: "auto" };
+      }
     } catch {
       // Ollama may be down; fall through to hardcoded default.
     }

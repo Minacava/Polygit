@@ -132,7 +132,9 @@ describe("style hash stale and TM gating", () => {
       });
 
       const db = openDatabase(root);
-      upsertTranslationMemory(db, "Hello world.", "VIEJO estilo", "fr", oldHash);
+      upsertTranslationMemory(db, "Hello world.", "VIEJO estilo", "fr", oldHash, {
+        approved: true,
+      });
       db.close();
 
       let llmCalls = 0;
@@ -156,8 +158,13 @@ describe("style hash stale and TM gating", () => {
         .get("fr");
       assert.match(tr.target_text, /^NEW:/);
       assert.equal(tr.style_hash, newHash);
+      // Draft LLM output must not overwrite an approved TM entry (PG-12).
       const tm = getTmEntries(db2, "fr");
-      assert.ok(tm.some((e) => e.style_hash === newHash));
+      const approved = tm.find((e) => e.source_text === "Hello world.");
+      assert.ok(approved);
+      assert.equal(approved.approved, 1);
+      assert.equal(approved.style_hash, oldHash);
+      assert.equal(approved.target_text, "VIEJO estilo");
       db2.close();
     });
   });

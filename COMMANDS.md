@@ -2,7 +2,7 @@
 
 Full flags and examples. For the product overview, see [README.md](README.md).
 
-Jump: [init](#init) · [config](#config) · [clone](#clone) · [import](#import) · [translate](#translate) · [sync](#sync) · [models](#models) · [glossary](#glossary) · [review](#review) · [commit](#commit) · [log](#log) · [publish](#publish) · [status](#status) · [check](#check) · [hooks](#hooks) · [export-tmx](#export-tmx)
+Jump: [init](#init) · [config](#config) · [clone](#clone) · [import](#import) · [translate](#translate) · [sync](#sync) · [prune](#prune) · [models](#models) · [glossary](#glossary) · [review](#review) · [commit](#commit) · [log](#log) · [publish](#publish) · [status](#status) · [check](#check) · [hooks](#hooks) · [export-tmx](#export-tmx)
 
 ---
 
@@ -89,10 +89,11 @@ polygit clone https://github.com/YOU/docs.git --no-init
 
 ## `import`
 
-Import files into the translation DB as pending segments.
+Import files into the translation DB as pending segments. Accepts files, directories, globs, or multiple paths. Unknown formats are skipped with a warning. Managed translation outputs are never imported.
 
 ```bash
 polygit import sources/intro.md --format=markdown
+polygit import sources docs/guide.md
 polygit import "docs/**/*.md"
 polygit import --root=docs --format=markdown
 polygit import sources/messages.po
@@ -101,15 +102,17 @@ polygit import locales/en.yml --format=yaml
 
 | Flag / arg | Description |
 | --- | --- |
-| `<path>` | File or glob under `contentRoots` |
-| `--root <dir>` | Import all known files under this directory |
+| `<path…>` | File, directory, or glob under `contentRoots` |
+| `--root <dir>` | Import all known files under this directory (must already be in `contentRoots`) |
 | `--format <fmt>` | `markdown` \| `json-i18n` \| `po` \| `yaml` \| `xliff` |
+
+`--root` no longer auto-appends to `contentRoots`. Add the root first with `polygit config set contentRoots …`.
 
 ---
 
 ## `translate`
 
-Translate pending/stale segments for a language. TM exact hits first; fuzzy skips to LLM unless `--accept-fuzzy`. On a TTY, shows a progress bar for LLM segments.
+Translate pending/stale segments for a language. TM exact hits first; fuzzy skips to LLM unless `--accept-fuzzy`. On a TTY, shows a progress bar for LLM segments. Per-segment LLM failures continue the pool (partial outputs + exit 1).
 
 ```bash
 polygit translate fr
@@ -117,6 +120,8 @@ polygit translate fr --provider=ollama --model=mistral
 polygit translate fr --doc=sources/intro.md
 polygit translate fr --dry-run
 polygit translate fr --accept-fuzzy
+polygit translate fr --add-lang
+polygit translate fr --concurrency=4
 polygit translate fr --style=academic --formality=formal
 ```
 
@@ -128,9 +133,13 @@ polygit translate fr --style=academic --formality=formal
 | `--model <id>` | One-off model override |
 | `--style <preset>` | One-off style preset; overrides `.tmconfig.json` `style` for this run |
 | `--formality <value>` | One-off formality; overrides config for this run |
-| `--dry-run` | Plan only — no writes, no LLM calls |
+| `--dry-run` | Plan only — no writes, no LLM calls, no work branch |
 | `--accept-fuzzy` | Apply fuzzy TM as unapproved drafts (skip LLM) |
+| `--add-lang` | Allow a language outside `targetLangs` (and add it to config) |
+| `--concurrency <n>` | Parallel LLM requests (`1`–`16`); or set `POLYGIT_CONCURRENCY` |
 | `--no-branch` | Do not auto-create/checkout `polygit/<lang>-YYYYMMDD` when on main/master |
+
+When `targetLangs` is non-empty, translating a language not in that list requires `--add-lang`.
 
 ---
 
@@ -155,7 +164,26 @@ polygit sync --dry-run
 | `--formality <value>` | One-off formality passed through to `translate` |
 | `--dry-run` | Show NEW/CHANGED files and target langs without writing |
 
-**Safeguard:** sync never marks translations approved. `publish` still requires `review` (or `--allow-unapproved`). Setting `autoTranslate: true` does not install hooks; use [`hooks install`](#hooks) explicitly if you want a pre-commit `check`.
+**Safeguard:** sync never marks translations approved. `publish` still requires `review` (or `--allow-unapproved`). Setting `autoTranslate: true` does not install hooks; use [`hooks install`](#hooks) explicitly if you want a pre-commit `check`. Sync also prunes deleted sources from the DB (same as [`prune`](#prune)).
+
+---
+
+## `prune`
+
+Forget documents whose source file was deleted (and optionally their translation outputs).
+
+```bash
+polygit prune
+polygit prune --outputs
+polygit prune --dry-run
+```
+
+| Flag | Description |
+| --- | --- |
+| `--outputs` | Also delete managed translation output files on disk |
+| `--dry-run` | Show what would be pruned without writing |
+
+`check` reports deleted sources as **DELETED**.
 
 ---
 
@@ -220,21 +248,24 @@ polygit review --lang=fr --approve-all
 | Flag | Description |
 | --- | --- |
 | `--lang <lang>` | Language to review (**required**) |
-| `--status <s>` | Filter: `pending` \| `translated` \| `stale` \| `approved` |
+| `--status <s>` | Filter: `pending` (missing row or untranslated) \| `translated` \| `stale` \| `approved` \| `needs_fix` (default: unapproved) |
 | `--approve-all` | Approve every listed segment that already has a TARGET (no interactive prompt) |
 | `--no-branch` | Do not auto-create/checkout `polygit/<lang>-YYYYMMDD` when on main/master |
 
-When no unapproved segments remain, review prints a reminder to run `polygit publish --lang=<lang> --yes` (opens a PR to main).
+`A` / approve-all asks for confirmation before bulk-approving. When no unapproved segments remain, review prints a reminder to run `polygit publish --lang=<lang> --yes` (opens a PR to main).
 
 ---
 
 ## `commit`
 
-Commit only configured content roots (e.g. `sources/` + `outputs/`). Never stages `.tm/` or `.env`.
+By default commits **translation outputs only** (so source edits stay out of the PR). Never stages `.tm/` or `.env`. Pass `--include-sources` to also stage contentRoots.
 
 ```bash
 # Explicit message (scripts / CI)
 polygit commit --message "translate(fr): add intro" --yes
+
+# Also stage source edits
+polygit commit --include-sources --message "docs: update intro" --yes
 
 # Interactive: type a message (Enter = dated default), then confirm
 polygit commit
@@ -248,6 +279,7 @@ polygit commit --ai --yes
 | --- | --- |
 | `--message <msg>` | Fixed commit message |
 | `--ai` | Generate message from the diff via the configured LLM; in TTY you can accept, edit (`e`), or decline |
+| `--include-sources` | Also stage source edits under `contentRoots` |
 | `--yes` | Skip “Proceed?” confirmation (required when stdin is not a TTY) |
 
 | Mode | When to use |
@@ -305,6 +337,8 @@ polygit publish --lang=fr --allow-unapproved   # not recommended
 
 **Gate:** every segment for that language must be **approved** in `review` (unless `--allow-unapproved`). Push uses your Git credentials; opening the PR/MR needs `GITHUB_TOKEN` / `GH_TOKEN` or `GITLAB_TOKEN` / `GL_TOKEN`.
 
+Trusted forge hosts for API tokens are `github.com` / `gitlab.com` plus `POLYGIT_FORGE_HOSTS` (comma-separated). Repo `.tmconfig.json` `forgeHosts` no longer grants token trust.
+
 ---
 
 ## `status`
@@ -330,7 +364,9 @@ Fails on:
 
 - **NEW** — supported files under `contentRoots` that are not in the DB (managed outputs excluded)
 - **CHANGED** — imported files whose content SHA-256 differs since last import (rows without a hash count as CHANGED)
-- **pending / stale** segments per language (including stale from a style change: `stale=N (style changed=…)`)
+- **DELETED** — DB documents whose source file is gone
+- **pending / stale / needs_fix** segments per language (including stale from a style change: `stale=N (style changed=…)`)
+- **broken placeholders** in translated text
 - **missing output files** on disk for `toOutputPath`
 
 Without `--lang`, checks every language in `targetLangs`. If `targetLangs` is empty and `--lang` is omitted, exits with a clear error.
@@ -340,6 +376,7 @@ polygit check
 polygit check --lang=fr
 polygit check --json
 polygit check --require-approved
+polygit check --hook
 ```
 
 | Flag | Description |
@@ -347,6 +384,7 @@ polygit check --require-approved
 | `--lang <lang>` | Language to check (default: all `targetLangs`) |
 | `--json` | Print a JSON report to stdout (for CI) |
 | `--require-approved` | Also fail when translated segments are not yet approved |
+| `--hook` | Pre-commit mode: warn on NEW/CHANGED sources instead of failing |
 
 ### GitHub Actions (PR gate)
 
@@ -378,9 +416,9 @@ polygit hooks install
 
 | Subcommand | Description |
 | --- | --- |
-| `install` | Create a `pre-commit` hook via `git rev-parse --git-path hooks` (mode `0755`) that runs **only** `polygit check` |
+| `install` | Create a `pre-commit` hook via `git rev-parse --git-path hooks` (mode `0755`) that runs **only** `polygit check --hook` |
 
-If a `pre-commit` hook already exists, install refuses to overwrite and exits with a non-zero status. The hook never runs `sync` and never approves translations.
+If a `pre-commit` hook already exists, install refuses to overwrite and exits with a non-zero status. The hook never runs `sync` and never approves translations. `--hook` lets authors commit source edits before re-import (NEW/CHANGED warn; DELETED / translation issues still fail).
 
 The hook resolves `polygit` in this order: `./node_modules/.bin/polygit`, then `polygit` on `PATH`, then `npx --no-install polygit`. If none work, it prints how to install polygit and exits with an error (instead of a cryptic `not found`).
 

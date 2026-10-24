@@ -43,4 +43,16 @@ describe("placeholders", () => {
     assert.equal(placeholdersPreserved(source, good), true);
     assert.deepEqual(missingPlaceholders(source, good), []);
   });
+
+  it("rejects substring / mutated placeholders and counts (PG-10)", () => {
+    assert.deepEqual(missingPlaceholders("Hi {name}", "Hola {name}x"), ["{name}"]);
+    assert.deepEqual(
+      missingPlaceholders("Run `acme login`", "Lancez `acme login-fr`"),
+      ["`acme login`"],
+    );
+    assert.deepEqual(missingPlaceholders("{a} {a}", "{a}"), ["{a}"]);
+    const wiki = "[w](https://x.org/a_(b))";
+    assert.ok(extractPlaceholders(wiki).includes("https://x.org/a_(b)"));
+    assert.deepEqual(missingPlaceholders(wiki, "[x](https://x.org/a_(b))"), []);
+  });
 });

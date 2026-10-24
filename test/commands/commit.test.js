@@ -8,7 +8,7 @@ import { runCommit } from "../../dist/commands/commit.js";
 import { simpleGit } from "simple-git";
 
 describe("commit", () => {
-  it("commits sources/ and outputs/ with --yes", async () => {
+  it("commits outputs by default; sources only with --include-sources", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-commit-"));
     const prev = process.cwd();
     process.chdir(root);
@@ -27,8 +27,16 @@ describe("commit", () => {
       const log = await git.log({ maxCount: 1 });
       assert.match(log.latest.message, /test: translate fr/);
       const show = await git.show(["--name-only", "--pretty=format:", "HEAD"]);
-      assert.match(show, /sources\/a\.md/);
+      assert.doesNotMatch(show, /sources\/a\.md/);
       assert.match(show, /outputs\/fr\/a\.md/);
+
+      await runCommit({
+        yes: true,
+        message: "test: include sources",
+        includeSources: true,
+      });
+      const show2 = await git.show(["--name-only", "--pretty=format:", "HEAD"]);
+      assert.match(show2, /sources\/a\.md/);
     } finally {
       process.chdir(prev);
     }
@@ -70,7 +78,7 @@ describe("commit", () => {
     const prev = process.cwd();
     process.chdir(root);
     try {
-      await runInit(root, { preset: "vitepress" });
+      await runInit(root, { preset: "vitepress", targetLangs: "fr" });
       const git = simpleGit(root);
       await git.addConfig("user.name", "Test");
       await git.addConfig("user.email", "test@example.com");
@@ -83,7 +91,7 @@ describe("commit", () => {
       await runCommit({ yes: true, message: "test: docs fr" });
 
       const show = await git.show(["--name-only", "--pretty=format:", "HEAD"]);
-      assert.match(show, /docs\/a\.md/);
+      assert.doesNotMatch(show, /^docs\/a\.md$/m);
       assert.match(show, /docs\/fr\/a\.md/);
       assert.doesNotMatch(show, /secret\.txt/);
     } finally {

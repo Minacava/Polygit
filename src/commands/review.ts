@@ -1,8 +1,13 @@
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import type { SegmentStatus } from "../core/db.js";
 import { assertLangCode } from "../core/lang.js";
 import { writeOutputDocuments } from "../core/output.js";
+import { missingPlaceholders } from "../core/placeholders.js";
 import {
   computeStyleHash,
   loadStyleGuideText,
@@ -15,8 +20,26 @@ import {
   countUnapprovedTranslations,
   listReviewSegments,
   upsertTranslation,
+  upsertTranslationMemory,
 } from "../core/repository.js";
 import { ensureTranslationBranch } from "../git/translation-branch.js";
+
+async function editInExternalEditor(initial: string): Promise<string | null> {
+  const editor = process.env.VISUAL || process.env.EDITOR || "vi";
+  const tmp = path.join(os.tmpdir(), `polygit-review-${process.pid}.txt`);
+  fs.writeFileSync(tmp, initial, "utf8");
+  try {
+    const result = spawnSync(editor, [tmp], { stdio: "inherit" });
+    if (result.status !== 0) return null;
+    return fs.readFileSync(tmp, "utf8").replace(/\s+$/, "");
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // ignore
+    }
+  }
+}
 
 /** Shown once at the start of an interactive review session. */
 export const REVIEW_KEY_TABLE = [
@@ -46,9 +69,15 @@ function tryApproveSegment(
   touchedDocs: Set<string>,
   documentPath: string,
   styleHash: string | null = null,
+  sourceText?: string,
 ): boolean {
   if (!targetText) return false;
   upsertTranslation(db, segmentId, lang, targetText, "manual", true, styleHash);
+  if (sourceText) {
+    upsertTranslationMemory(db, sourceText, targetText, lang, styleHash, {
+      approved: true,
+    });
+  }
   touchedDocs.add(documentPath);
   return true;
 }
@@ -99,6 +128,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
             touchedDocs,
             row.document_path,
             styleHashFor(row.document_path),
+            row.source_text,
           )
         ) {
           approved += 1;
@@ -126,9 +156,15 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
 
         for (let i = 0; i < rows.length; i++) {
           const row = rows[i]!;
-          console.log(`── ${row.document_path}  (${row.status})`);
+          console.log(`── ${row.document_path}  (${row.translation_status ?? row.status})`);
           console.log(`SOURCE: ${row.source_text}`);
           console.log(`TARGET: ${row.target_text ?? "(none)"}`);
+          if (row.target_text) {
+            const miss = missingPlaceholders(row.source_text, row.target_text);
+            if (miss.length > 0) {
+              console.log(`  ⚠ missing placeholders: ${miss.join(", ")}`);
+            }
+          }
 
           // Keep case: `A` = approve-all; `a` = approve one.
           const raw = (await rl.question("Action [a/A/e/s/q] > ")).trim();
@@ -138,6 +174,16 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
           if (answer === "s" || answer === "") continue;
 
           if (raw === "A" || answer === "aa" || answer === "all") {
+            const remaining = rows.length - i;
+            const confirm = (
+              await rl.question(`Approve all ${remaining} remaining segment(s)? [y/N] > `)
+            )
+              .trim()
+              .toLowerCase();
+            if (confirm !== "y" && confirm !== "yes") {
+              console.log("Bulk approve cancelled.\n");
+              continue;
+            }
             let bulk = 0;
             let skipped = 0;
             for (let j = i; j < rows.length; j++) {
@@ -151,6 +197,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
                   touchedDocs,
                   next.document_path,
                   styleHashFor(next.document_path),
+                  next.source_text,
                 )
               ) {
                 bulk += 1;
@@ -176,6 +223,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
                 touchedDocs,
                 row.document_path,
                 styleHashFor(row.document_path),
+                row.source_text,
               )
             ) {
               console.log("No translation to approve.");
@@ -186,11 +234,24 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
           }
 
           if (answer === "e") {
-            const edited = await rl.question("New translation > ");
-            if (!edited.trim()) {
-              console.log("Empty edit ignored.\n");
-              continue;
+            let edited: string;
+            if ((row.source_text.includes("\n") || (row.target_text ?? "").includes("\n")) &&
+              process.stdout.isTTY) {
+              console.log("Opening editor for multi-line segment…");
+              const fromEditor = await editInExternalEditor(row.target_text ?? "");
+              if (fromEditor == null || !fromEditor.trim()) {
+                console.log("Empty edit ignored.\n");
+                continue;
+              }
+              edited = fromEditor;
+            } else {
+              edited = await rl.question("New translation > ");
+              if (!edited.trim()) {
+                console.log("Empty edit ignored.\n");
+                continue;
+              }
             }
+            const styleHash = styleHashFor(row.document_path);
             upsertTranslation(
               db,
               row.id,
@@ -198,8 +259,11 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
               edited.trim(),
               "manual",
               true,
-              styleHashFor(row.document_path),
+              styleHash,
             );
+            upsertTranslationMemory(db, row.source_text, edited.trim(), lang, styleHash, {
+              approved: true,
+            });
             touchedDocs.add(row.document_path);
             console.log("Saved and approved.\n");
           }
