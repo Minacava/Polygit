@@ -68,6 +68,30 @@ describe("provider helpers", () => {
     assert.equal(sanitizeLlmTranslation("```md\nHola\n```"), "Hola");
   });
 
+  it("preserves intentional quotes when source was quoted or has inner quotes (PG-08)", () => {
+    assert.equal(
+      sanitizeLlmTranslation('"Fast" and "cheap"', '"Fast" and "cheap"'),
+      '"Fast" and "cheap"',
+    );
+    assert.equal(sanitizeLlmTranslation('"Hola"', '"Hi"'), '"Hola"');
+    assert.equal(sanitizeLlmTranslation("«Bonjour»", "Hello"), "Bonjour");
+  });
+
+  it("strips think blocks and translation preambles (PG-09)", () => {
+    assert.equal(
+      sanitizeLlmTranslation("<think>reasoning</think>\nBonjour"),
+      "Bonjour",
+    );
+    assert.equal(
+      sanitizeLlmTranslation("reasoning</think>\nBonjour"),
+      "Bonjour",
+    );
+    assert.equal(
+      sanitizeLlmTranslation("Here is the translation:\nBonjour"),
+      "Bonjour",
+    );
+  });
+
   it("asks the model not to echo delimiter tags", () => {
     const messages = buildTranslationMessages("Hello", "en", "fr");
     assert.match(messages[0]?.content ?? "", /Do not copy the <TRANSLATION_DOCUMENT>/);

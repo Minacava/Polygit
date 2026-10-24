@@ -206,7 +206,7 @@ export function listSegmentsForTranslate(
     FROM segments s
     JOIN documents d ON d.id = s.document_id
     LEFT JOIN translations t ON t.segment_id = s.id AND t.lang = ?
-    WHERE (t.id IS NULL OR t.status = 'stale')
+    WHERE (t.id IS NULL OR t.status = 'stale' OR t.status = 'needs_fix')
   `;
 
   if (opts.documentPath) {
@@ -238,9 +238,12 @@ export function upsertTranslation(
   source: TranslationSource,
   approved = false,
   styleHash: string | null = null,
+  /** Override status (e.g. needs_fix for failed placeholder checks). */
+  statusOverride?: TranslationLangStatus,
 ): void {
   const ts = nowIso();
-  const langStatus = approved ? "approved" : "translated";
+  const langStatus: TranslationLangStatus =
+    statusOverride ?? (approved ? "approved" : "translated");
   const existing = db
     .prepare(`SELECT id FROM translations WHERE segment_id = ? AND lang = ?`)
     .get(segmentId, lang) as { id: string } | undefined;
@@ -290,24 +293,33 @@ export function upsertTranslationMemory(
   targetText: string,
   lang: string,
   styleHash: string | null = null,
+  options: { approved?: boolean } = {},
 ): void {
   const normalized = normalizeText(sourceText);
+  const approved = options.approved === true ? 1 : 0;
   const hit = db
-    .prepare(`SELECT id FROM translation_memory WHERE lang = ? AND source_norm = ?`)
-    .get(lang, normalized) as { id: string } | undefined;
+    .prepare(`SELECT id, approved FROM translation_memory WHERE lang = ? AND source_norm = ?`)
+    .get(lang, normalized) as { id: string; approved: number } | undefined;
   const ts = nowIso();
   if (hit) {
-    db.prepare(
-      `UPDATE translation_memory
-       SET target_text = ?, usage_count = usage_count + 1, updated_at = ?, style_hash = ?
-       WHERE id = ?`,
-    ).run(targetText, ts, styleHash, hit.id);
+    // Approved human corrections replace drafts; drafts never demote approved text.
+    if (approved === 1 || hit.approved === 0) {
+      db.prepare(
+        `UPDATE translation_memory
+         SET target_text = ?, usage_count = usage_count + 1, updated_at = ?, style_hash = ?, approved = ?
+         WHERE id = ?`,
+      ).run(targetText, ts, styleHash, approved === 1 ? 1 : hit.approved, hit.id);
+    } else {
+      db.prepare(
+        `UPDATE translation_memory SET usage_count = usage_count + 1, updated_at = ? WHERE id = ?`,
+      ).run(ts, hit.id);
+    }
   } else {
     db.prepare(
       `INSERT INTO translation_memory
-         (id, source_text, target_text, lang, usage_count, updated_at, source_norm, style_hash)
-       VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
-    ).run(createId("tm"), sourceText, targetText, lang, ts, normalized, styleHash);
+         (id, source_text, target_text, lang, usage_count, updated_at, source_norm, style_hash, approved)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+    ).run(createId("tm"), sourceText, targetText, lang, ts, normalized, styleHash, approved);
   }
 }
 

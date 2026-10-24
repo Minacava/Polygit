@@ -8,6 +8,11 @@ export interface TmEntry {
   usage_count: number;
   /** Style fingerprint; exact reuse requires a match with the current style. */
   style_hash?: string | null;
+  /**
+   * 1 (or omitted/legacy) = eligible for tm-exact.
+   * 0 = draft only (fuzzy candidates).
+   */
+  approved?: number;
 }
 
 export interface MatchResult {
@@ -33,7 +38,9 @@ export class TranslationMemoryIndex {
   add(entry: TmEntry): void {
     const normalized = normalizeText(entry.source_text);
     if (!normalized) return;
-    if (!this.exact.has(normalized)) this.exact.set(normalized, entry);
+    // Exact reuse only from approved (or legacy) entries.
+    const approved = entry.approved !== 0;
+    if (approved && !this.exact.has(normalized)) this.exact.set(normalized, entry);
     const bucket = this.byLength.get(normalized.length) ?? [];
     bucket.push({ entry, normalized });
     this.byLength.set(normalized.length, bucket);
