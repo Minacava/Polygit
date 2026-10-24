@@ -6,7 +6,7 @@
 
 **Translate your docs and i18n files with an LLM, without leaving Git, and without paying twice for the same sentence.**
 
-![polygit demo](docs/demo.jpg)
+![polygit demo](docs/demo.gif)
 
 polygit is a local-first CLI for translating content. It keeps a translation memory and a glossary in a local SQLite file, and it only calls an LLM (**Claude**, **OpenAI**, **Hugging Face**, or **Ollama** on your machine) when the memory has no match. You approve every segment in the terminal, then polygit opens a **GitHub PR** or **GitLab MR** so your team can review it.
 
