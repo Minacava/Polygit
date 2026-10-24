@@ -102,6 +102,12 @@ export function runImport(
 
   const targets = expandImportTargets(projectRoot, filePath ?? ".", {
     ...(options.root ? { root: options.root } : {}),
+    layout: {
+      contentRoots,
+      outputMode: config.outputMode,
+      outputRoot: config.outputRoot,
+    },
+    targetLangs: config.targetLangs,
   });
 
   if (targets.length === 0) {

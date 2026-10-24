@@ -123,8 +123,28 @@ describe("repository", () => {
 
     assert.equal(countUnapprovedTranslations(db, "fr"), 1);
     assert.equal(countApprovedTranslations(db, "fr"), 1);
-    assert.equal(countUnapprovedTranslations(db, "es"), 0);
+    // Segments without a translation row for `es` also count as unapproved.
+    assert.equal(countUnapprovedTranslations(db, "es"), 2);
     assert.equal(countApprovedTranslations(db, "es"), 0);
+    db.close();
+  });
+
+  it("counts pending (no translation row) as unapproved for publish gate", () => {
+    const root = tempProject();
+    const db = openDatabase(root);
+    const doc = upsertDocument(db, "sources/hello.md", "markdown");
+    replaceDocumentSegments(db, doc, [
+      { orderIndex: 0, sourceText: "One." },
+      { orderIndex: 1, sourceText: "Two." },
+      { orderIndex: 2, sourceText: "Three." },
+    ]);
+    const segments = db
+      .prepare(`SELECT id FROM segments WHERE document_id = ? ORDER BY order_index`)
+      .all(doc.id);
+    upsertTranslation(db, segments[0].id, "fr", "Un.", "llm", true);
+
+    assert.equal(countUnapprovedTranslations(db, "fr"), 2);
+    assert.equal(countApprovedTranslations(db, "fr"), 1);
     db.close();
   });
 
@@ -197,17 +217,34 @@ describe("repository", () => {
 
     const row = db
       .prepare(
-        `SELECT s.id, s.status AS seg_status, t.target_text, t.status AS tr_status, t.approved
+        `SELECT s.id, s.source_text, s.status AS seg_status, t.target_text, t.status AS tr_status, t.approved
          FROM segments s
          JOIN translations t ON t.segment_id = s.id AND t.lang = 'fr'
          WHERE s.document_id = ?`,
       )
       .get(doc.id);
-    assert.equal(row.id, seg.id);
+    // Re-keyed to the new content-stable id (not the old hash).
+    assert.notEqual(row.id, seg.id);
+    assert.equal(row.source_text, "Hello brave world.");
     assert.equal(row.target_text, "Bonjour le monde.");
     assert.equal(row.seg_status, "stale");
     assert.equal(row.tr_status, "stale");
     assert.equal(row.approved, 0);
+
+    // Identical re-import must not re-stale (PG-05).
+    const again = replaceDocumentSegments(db, doc, [
+      { orderIndex: 0, sourceText: "Hello brave world." },
+    ]);
+    assert.equal(again.updated, 0);
+    assert.equal(again.unchanged, 1);
+    const after = db
+      .prepare(
+        `SELECT t.status AS tr_status, t.approved FROM translations t
+         JOIN segments s ON s.id = t.segment_id WHERE s.document_id = ?`,
+      )
+      .get(doc.id);
+    assert.equal(after.tr_status, "stale");
+    assert.equal(after.approved, 0);
     db.close();
   });
 

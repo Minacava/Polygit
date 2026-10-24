@@ -447,14 +447,20 @@ program
 program
   .command("check")
   .description(
-    "CI gate: fail on NEW/CHANGED sources, pending/stale segments, or missing outputs",
+    "CI gate: fail on NEW/CHANGED sources, pending/stale segments, missing outputs, or broken placeholders",
   )
   .option("--lang <lang>", "Language to check (default: all targetLangs)")
   .option("--json", "Print machine-readable JSON to stdout", false)
-  .action((opts: { lang?: string; json?: boolean }) => {
+  .option(
+    "--require-approved",
+    "Fail when translated segments are not yet approved",
+    false,
+  )
+  .action((opts: { lang?: string; json?: boolean; requireApproved?: boolean }) => {
     runCheck({
       ...(opts.lang ? { lang: opts.lang } : {}),
       json: Boolean(opts.json),
+      requireApproved: Boolean(opts.requireApproved),
     });
   });
 

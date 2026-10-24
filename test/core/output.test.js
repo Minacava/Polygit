@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { openDatabase } from "../../dist/core/db.js";
+import { sha256Text } from "../../dist/core/hash.js";
 import { writeOutputDocuments } from "../../dist/core/output.js";
 import { DEFAULT_CONFIG, writeConfig } from "../../dist/core/project.js";
 import {
@@ -17,7 +18,7 @@ function seedDoc(root, sourceRel, text = "Hello world.\n") {
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, text, "utf8");
   const db = openDatabase(root);
-  const doc = upsertDocument(db, sourceRel, "markdown");
+  const doc = upsertDocument(db, sourceRel, "markdown", sha256Text(text));
   replaceDocumentSegments(db, doc, [{ orderIndex: 0, sourceText: "Hello world." }]);
   const segment = db
     .prepare(`SELECT id FROM segments WHERE document_id = ?`)
@@ -92,6 +93,42 @@ describe("writeOutputDocuments", () => {
     const { db } = seedDoc(root, "docs/intro.md");
     const written = writeOutputDocuments(db, root, "fr", ["docs/intro.md"]);
     assert.deepEqual(written, ["locales/fr/intro.md"]);
+    db.close();
+  });
+
+  it("refuses to write when the source changed since import (PG-02)", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-output-drift-"));
+    writeConfig(root, { ...DEFAULT_CONFIG });
+    const sourceRel = "sources/hello.md";
+    const text = "# T\n\nAlpha.\n\nBravo.\n\nCharlie paragraph.\n";
+    const abs = path.join(root, sourceRel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, text, "utf8");
+    const db = openDatabase(root);
+    const doc = upsertDocument(db, sourceRel, "markdown", sha256Text(text));
+    replaceDocumentSegments(db, doc, [
+      { orderIndex: 0, sourceText: "T" },
+      { orderIndex: 1, sourceText: "Alpha." },
+      { orderIndex: 2, sourceText: "Bravo." },
+      { orderIndex: 3, sourceText: "Charlie paragraph." },
+    ]);
+    const segs = db
+      .prepare(`SELECT id, source_text FROM segments WHERE document_id = ? ORDER BY order_index`)
+      .all(doc.id);
+    for (const s of segs) {
+      if (s.source_text === "T") continue;
+      upsertTranslation(db, s.id, "fr", `FR: ${s.source_text}`, "llm", true);
+    }
+
+    fs.writeFileSync(
+      abs,
+      "# T\n\nNEW intro.\n\nAlpha.\n\nBravo.\n\nCharlie paragraph.\n",
+      "utf8",
+    );
+    assert.throws(
+      () => writeOutputDocuments(db, root, "fr", [sourceRel]),
+      /changed since import/i,
+    );
     db.close();
   });
 });
