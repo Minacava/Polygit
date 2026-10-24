@@ -339,12 +339,14 @@ Without `--lang`, checks every language in `targetLangs`. If `targetLangs` is em
 polygit check
 polygit check --lang=fr
 polygit check --json
+polygit check --require-approved
 ```
 
 | Flag | Description |
 | --- | --- |
 | `--lang <lang>` | Language to check (default: all `targetLangs`) |
 | `--json` | Print a JSON report to stdout (for CI) |
+| `--require-approved` | Also fail when translated segments are not yet approved |
 
 ### GitHub Actions (PR gate)
 
