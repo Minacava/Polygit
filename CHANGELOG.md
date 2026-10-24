@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.2.6
+
+- Fix: `status` on-disk count excludes managed translation outputs; pluralize as "1 file" / "N files" (no `file(s)`)
+- Fix: strip wrapping quotes (including curly/guillemets) and markdown fences from LLM translations
+- Shorter auto work branches: `polygit/<lang>-YYYYMMDD` (legacy `polygit/translate-…` still recognized)
+
 ## 1.2.5
 
 - Fix: strip echoed `<TRANSLATION_DOCUMENT>` delimiters from LLM translations (and tell the model not to copy them)
