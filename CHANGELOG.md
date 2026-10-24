@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.2.7
+
+Audit fixes from the 1.2.6 review (PG-01…PG-44):
+
 - Fix (PG-01): `import` glob / `--root` skips managed translation outputs (no more `docs/fr/fr/...`)
 - Fix (PG-02): refuse to write outputs when the source changed since import; match translations by source text
 - Fix (PG-03): publish / review “all approved” counts segments without a translation row
