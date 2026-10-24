@@ -416,7 +416,13 @@ export function expandImportTargets(
   const normalized = pattern.replace(/\\/g, "/").replace(/^\.\/+/, "");
   if (!hasGlobMagic(normalized)) {
     const abs = resolveInsideProject(projectRoot, normalized);
-    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+    if (!fs.existsSync(abs)) {
+      throw new Error(`File not found: ${pattern}`);
+    }
+    if (fs.statSync(abs).isDirectory()) {
+      return listContentFiles(projectRoot, [normalized], exts).filter(notOutput);
+    }
+    if (!fs.statSync(abs).isFile()) {
       throw new Error(`File not found: ${pattern}`);
     }
     const rel = toPosixRelative(projectRoot, abs);

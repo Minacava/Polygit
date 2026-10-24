@@ -480,10 +480,10 @@ export function rebuildGlossaryUsage(db: Database.Database, glossaryId?: string)
     for (const term of terms) {
       const needle = term.source_term.trim();
       if (!needle) continue;
-      // Word-boundary match (case-insensitive); escapes regex metacharacters.
+      // Whole-word match (case-sensitive) to avoid false positives like "cat" in "category".
       const pattern = new RegExp(
-        `(?:^|[^\\p{L}\\p{N}_])${escapeRegExp(needle)}(?:[^\\p{L}\\p{N}_]|$)`,
-        "iu",
+        `(?<![\\p{L}\\p{N}])${escapeRegExp(needle)}(?![\\p{L}\\p{N}])`,
+        "u",
       );
       for (const segment of segments) {
         if (pattern.test(segment.source_text)) {
@@ -497,10 +497,14 @@ export function rebuildGlossaryUsage(db: Database.Database, glossaryId?: string)
   return links;
 }
 
+/**
+ * Mark translations stale for glossary-linked segments.
+ * `lang` is required so a French glossary change does not invalidate German.
+ */
 export function markGlossarySegmentsStale(
   db: Database.Database,
   glossaryIds: string[],
-  lang?: string,
+  lang: string,
 ): string[] {
   if (glossaryIds.length === 0) return [];
   const ts = nowIso();
@@ -512,31 +516,23 @@ export function markGlossarySegmentsStale(
     }
   }
 
-  // Prefer per-language stale on translations; fall back to segment stale only when lang omitted.
-  if (lang) {
-    const updateExisting = db.prepare(
-      `UPDATE translations
-       SET status = 'stale', approved = 0, updated_at = ?
-       WHERE segment_id = ? AND lang = ?`,
-    );
-    for (const segmentId of segmentIds) {
-      updateExisting.run(ts, segmentId, lang);
-    }
-  } else {
-    // Legacy: mark segment stale (affects all langs via list query only if translation missing status — avoided).
-    // Still clear approved on ALL translation rows for those segments so publish gate blocks.
-    const updateSeg = db.prepare(
-      `UPDATE segments SET status = 'stale', updated_at = ? WHERE id = ?`,
-    );
-    const updateTr = db.prepare(
-      `UPDATE translations SET status = 'stale', approved = 0, updated_at = ? WHERE segment_id = ?`,
-    );
-    for (const segmentId of segmentIds) {
-      updateSeg.run(ts, segmentId);
-      updateTr.run(ts, segmentId);
-    }
+  const updateExisting = db.prepare(
+    `UPDATE translations
+     SET status = 'stale', approved = 0, updated_at = ?
+     WHERE segment_id = ? AND lang = ?`,
+  );
+  for (const segmentId of segmentIds) {
+    updateExisting.run(ts, segmentId, lang);
   }
   return [...segmentIds];
+}
+
+/** Remove a document and its segments/translations/glossary_usage (cascade). */
+export function deleteDocument(db: Database.Database, docPath: string): boolean {
+  const doc = getDocumentByPath(db, docPath);
+  if (!doc) return false;
+  db.prepare(`DELETE FROM documents WHERE id = ?`).run(doc.id);
+  return true;
 }
 
 export function getDocumentByPath(
@@ -601,13 +597,26 @@ export function listReviewSegments(
     JOIN documents d ON d.id = s.document_id
     WHERE 1=1`;
 
-  if (opts.lang && opts.status) {
-    // Prefer per-lang translation status when reviewing a language.
+  if (opts.lang && opts.status === "pending") {
+    // Pending for a lang = no translation row yet.
+    sql += ` AND NOT EXISTS (
+      SELECT 1 FROM translations t WHERE t.segment_id = s.id AND t.lang = ?
+    )`;
+    params.push(opts.lang);
+  } else if (opts.lang && opts.status) {
     sql += ` AND EXISTS (
       SELECT 1 FROM translations t
       WHERE t.segment_id = s.id AND t.lang = ? AND t.status = ?
     )`;
     params.push(opts.lang, opts.status);
+  } else if (opts.lang && !opts.status) {
+    // Default: unapproved translated/stale/needs_fix (skip already approved).
+    sql += ` AND EXISTS (
+      SELECT 1 FROM translations t
+      WHERE t.segment_id = s.id AND t.lang = ?
+        AND (t.approved = 0 OR t.status = 'stale' OR t.status = 'needs_fix')
+    )`;
+    params.push(opts.lang);
   } else if (opts.status) {
     sql += ` AND s.status = ?`;
     params.push(opts.status);

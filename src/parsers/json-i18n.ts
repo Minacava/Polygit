@@ -36,6 +36,18 @@ export const jsonI18nParser: Parser = {
 
     const walk = (node: unknown, pathParts: Array<string | number>) => {
       if (typeof node === "string") {
+        const key =
+          pathParts.length > 0 ? String(pathParts[pathParts.length - 1]) : "";
+        const humanKey =
+          /^(label|title|description|message|text|content|summary|sidebar_label)$/i.test(
+            key,
+          );
+        // Skip machine identifiers (e.g. Docusaurus link.type = "generated-index").
+        // Only lowercase slug-like values are treated as identifiers so "Save" still translates.
+        const identifierValue = /^[a-z0-9][a-z0-9._-]*$/.test(node);
+        if (identifierValue && !humanKey) {
+          return;
+        }
         leaves.push({ path: pathParts, orderIndex, sourceText: node });
         segments.push({ orderIndex, sourceText: node });
         orderIndex += 1;

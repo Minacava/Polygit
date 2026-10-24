@@ -14,6 +14,13 @@
 - Fix (PG-12): TM exact reuse only from approved entries; review updates TM
 - Fix (PG-28): reject truncated Claude/OpenAI completions (`max_tokens` / `finish_reason=length`)
 - Schema v7: `translations.status` includes `needs_fix`; `translation_memory.approved`
+- Fix (PG-13): glossary sync stales only the term’s language and retranslates each affected lang
+- Fix (PG-14): `prune` / sync remove deleted sources; check reports DELETED
+- Fix (PG-15): translate writes skeleton outputs for empty docs; warn on unterminated front matter
+- Fix (PG-16): `import` accepts directories and multiple paths
+- Fix (PG-17): skip unknown formats; transactional import; skip JSON identifier values
+- Fix (PG-24): review defaults to unapproved; `--status pending` = missing row; confirm bulk approve
+- Fix (PG-25): `translate` requires `--add-lang` when the language is outside targetLangs
 
 ## 1.2.6
 
