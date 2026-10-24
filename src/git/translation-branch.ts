@@ -11,7 +11,8 @@ export function translationBranchName(
   lang: string,
   now = new Date(),
 ): string {
-  const day = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const p = (n: number) => String(n).padStart(2, "0");
+  const day = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}`;
   const name = `polygit/${lang.trim().toLowerCase()}-${day}`;
   return assertSafeGitBranch(name);
 }

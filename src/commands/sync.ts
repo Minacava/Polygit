@@ -5,6 +5,7 @@ import {
   readConfig,
   requireProjectRoot,
 } from "../core/project.js";
+import { deleteDocument } from "../core/repository.js";
 import { scanContentDrift } from "./check.js";
 import { runImport } from "./import.js";
 import { runTranslate } from "./translate.js";
@@ -57,30 +58,51 @@ export async function runSync(options: SyncOptions = {}): Promise<{
   }
 
   const toImport = [...new Set([...drift.newFiles, ...drift.changedFiles])].sort();
+  const toPrune = [...drift.deletedFiles].sort();
 
-  if (toImport.length === 0) {
-    console.log("sync: nothing to do (no NEW or CHANGED source files)");
+  if (toImport.length === 0 && toPrune.length === 0) {
+    console.log("sync: nothing to do (no NEW, CHANGED, or DELETED source files)");
     return { imported: [], langs, dryRun: Boolean(options.dryRun) };
   }
 
   if (options.dryRun) {
-    console.log(
-      `[dry-run] sync would import ${toImport.length} ${toImport.length === 1 ? "file" : "files"}:`,
-    );
-    for (const rel of toImport) {
-      const kind = drift.newFiles.includes(rel) ? "NEW" : "CHANGED";
-      console.log(`  ${kind}  ${rel}`);
+    if (toImport.length > 0) {
+      console.log(
+        `[dry-run] sync would import ${toImport.length} ${toImport.length === 1 ? "file" : "files"}:`,
+      );
+      for (const rel of toImport) {
+        const kind = drift.newFiles.includes(rel) ? "NEW" : "CHANGED";
+        console.log(`  ${kind}  ${rel}`);
+      }
+    }
+    if (toPrune.length > 0) {
+      console.log(`[dry-run] sync would prune ${toPrune.length} deleted document(s):`);
+      for (const rel of toPrune) console.log(`  DELETED  ${rel}`);
     }
     console.log(`[dry-run] then translate to: ${langs.join(", ")}`);
     console.log("[dry-run] translations would remain unapproved (review still required)");
     return { imported: toImport, langs, dryRun: true };
   }
 
-  console.log(
-    `sync: importing ${toImport.length} ${toImport.length === 1 ? "file" : "files"}…`,
-  );
-  for (const rel of toImport) {
-    runImport(rel);
+  if (toPrune.length > 0) {
+    const pruneDb = openProjectDb(root);
+    try {
+      for (const rel of toPrune) {
+        deleteDocument(pruneDb, rel);
+        console.log(`sync: pruned deleted source ${rel}`);
+      }
+    } finally {
+      pruneDb.close();
+    }
+  }
+
+  if (toImport.length > 0) {
+    console.log(
+      `sync: importing ${toImport.length} ${toImport.length === 1 ? "file" : "files"}…`,
+    );
+    for (const rel of toImport) {
+      runImport(rel);
+    }
   }
 
   for (const lang of langs) {

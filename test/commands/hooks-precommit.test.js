@@ -89,10 +89,15 @@ describe("pre-commit hook resolves local polygit", () => {
     }
   });
 
-  it("blocks commit when check fails using only node_modules/.bin", async () => {
+  it("blocks commit when check fails on missing outputs (hook softens NEW/CHANGED)", async () => {
     const { root, prev } = await setupHookProject();
     try {
-      fs.writeFileSync(path.join(root, "sources", "new.md"), "Unimported.\n", "utf8");
+      // Imported but never translated → missing output / pending fails even under --hook.
+      const { runImport } = await import("../../dist/commands/import.js");
+      const { writeConfig, readConfig } = await import("../../dist/core/project.js");
+      writeConfig(root, { ...readConfig(root), targetLangs: ["fr"] });
+      fs.writeFileSync(path.join(root, "sources", "new.md"), "Hello.\n", "utf8");
+      runImport("sources/new.md");
       const git = simpleGit(root);
       await git.add(["sources/new.md"]);
       const result = spawnSync("git", ["commit", "-m", "should fail"], {
@@ -102,7 +107,7 @@ describe("pre-commit hook resolves local polygit", () => {
       });
       assert.notEqual(result.status, 0);
       const out = `${result.stdout}\n${result.stderr}`;
-      assert.match(out, /NEW \(not imported\)|check failed/i);
+      assert.match(out, /missing output|check failed|pending=/i);
       assert.doesNotMatch(out, /polygit: not found/i);
     } finally {
       process.chdir(prev);

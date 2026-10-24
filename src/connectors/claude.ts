@@ -11,6 +11,7 @@ import { DEFAULT_MODELS } from "./resolve-model.js";
 
 interface ClaudeResponse {
   content?: Array<{ type: string; text?: string }>;
+  stop_reason?: string | null;
   error?: { message?: string };
 }
 
@@ -55,7 +56,9 @@ export function createClaudeProvider(
         },
         body: JSON.stringify({
           model,
-          max_tokens: 2048,
+          max_tokens: Math.min(8192, Math.max(1024, Math.ceil(
+            messages.reduce((n, m) => n + m.content.length, 0) * 1.5,
+          ))),
           system,
           messages: user,
         }),
@@ -72,6 +75,10 @@ export function createClaudeProvider(
     if (!result.ok) {
       const detail = result.data.error?.message ?? `HTTP ${result.status}`;
       throw new Error(`Claude API error (${result.status}): ${redactSecrets(detail)}`);
+    }
+
+    if (result.data.stop_reason === "max_tokens") {
+      throw new Error("Claude output truncated (max_tokens); segment too long.");
     }
 
     const textOut = result.data.content?.find((c) => c.type === "text")?.text?.trim();
@@ -93,7 +100,7 @@ export function createClaudeProvider(
       const raw = await complete(
         buildTranslationMessages(text, sourceLang, targetLang, context),
       );
-      return sanitizeLlmTranslation(raw);
+      return sanitizeLlmTranslation(raw, text);
     },
 
     complete,

@@ -157,10 +157,12 @@ describe("publish gate", () => {
     }
   });
 
-  it("allows Enterprise host when listed in forgeHosts with --forge", async () => {
+  it("allows Enterprise host when listed in POLYGIT_FORGE_HOSTS with --forge", async () => {
     const { root, prev } = await setupProject();
     const prevToken = process.env.GITHUB_TOKEN;
+    const prevHosts = process.env.POLYGIT_FORGE_HOSTS;
     process.env.GITHUB_TOKEN = "test-token-not-for-network";
+    process.env.POLYGIT_FORGE_HOSTS = "github.mycompany.com";
     try {
       const git = simpleGit(root);
       await git.addConfig("user.email", "test@example.com");
@@ -170,15 +172,11 @@ describe("publish gate", () => {
       await git.commit("init");
 
       await seedApprovedTranslation(root);
-      writeConfig(root, {
-        ...DEFAULT_CONFIG,
-        forgeHosts: ["github.mycompany.com"],
-      });
       await git.addRemote("origin", "https://github.mycompany.com/acme/docs.git");
       const baseBranch = (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
 
-      // Host is confirmed via forgeHosts; publish proceeds past forge resolution
-      // and fails later on push (no real remote) — not on trust checks.
+      // Host is confirmed via POLYGIT_FORGE_HOSTS; publish proceeds past forge
+      // resolution and fails later on push (no real remote) — not on trust checks.
       await assert.rejects(
         () =>
           runPublish({
@@ -196,6 +194,8 @@ describe("publish gate", () => {
     } finally {
       if (prevToken === undefined) delete process.env.GITHUB_TOKEN;
       else process.env.GITHUB_TOKEN = prevToken;
+      if (prevHosts === undefined) delete process.env.POLYGIT_FORGE_HOSTS;
+      else process.env.POLYGIT_FORGE_HOSTS = prevHosts;
       process.chdir(prev);
     }
   });

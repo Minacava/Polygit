@@ -67,7 +67,23 @@ export async function fetchJson<T>(
       response = await fetchImpl(url, init);
     } catch (err) {
       lastNetworkError = err;
-      if (attempt + 1 >= retries) throw err;
+      const name = err instanceof Error ? err.name : "";
+      const isTimeout = name === "TimeoutError" || name === "AbortError";
+      if (isTimeout || attempt + 1 >= retries) {
+        const origin = (() => {
+          try {
+            return new URL(url).origin;
+          } catch {
+            return url;
+          }
+        })();
+        throw new Error(
+          `${options.method ?? "GET"} ${origin} ${
+            isTimeout ? `timed out after ${timeoutMs} ms` : "failed"
+          }`,
+          { cause: err },
+        );
+      }
       await sleep(baseDelay * 2 ** attempt);
       continue;
     }

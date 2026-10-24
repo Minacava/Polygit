@@ -51,7 +51,11 @@ describe("translate pipeline", () => {
       assert.equal(listSegmentsForTranslate(db, { lang: "es" }).length, 2);
       db.close();
 
-      await runTranslate("es", { providerInstance: mock, provider: "ollama" });
+      await runTranslate("es", {
+        providerInstance: mock,
+        provider: "ollama",
+        addLang: true,
+      });
       const esOut = path.join(root, "outputs", "es", "hello.md");
       assert.ok(fs.existsSync(esOut));
       assert.match(fs.readFileSync(esOut, "utf8"), /\[es\] Hello world/);
@@ -64,7 +68,9 @@ describe("translate pipeline", () => {
     const { root, prev } = await setupProject();
     try {
       const db = openDatabase(root);
-      upsertTranslationMemory(db, "Hello world!", "Bonjour le monde!", "fr");
+      upsertTranslationMemory(db, "Hello world!", "Bonjour le monde!", "fr", null, {
+        approved: true,
+      });
       db.close();
 
       let llmCalls = 0;
@@ -95,7 +101,9 @@ describe("translate pipeline", () => {
     const { root, prev } = await setupProject();
     try {
       const db = openDatabase(root);
-      upsertTranslationMemory(db, "Hello world!", "Bonjour le monde!", "fr");
+      upsertTranslationMemory(db, "Hello world!", "Bonjour le monde!", "fr", null, {
+        approved: true,
+      });
       db.close();
 
       const mock = {
@@ -156,13 +164,106 @@ describe("translate pipeline", () => {
 
       const db = openDatabase(root);
       assert.equal(countUnapprovedTranslations(db, "fr"), 1);
+      const row = db
+        .prepare(`SELECT status, target_text FROM translations WHERE lang = 'fr'`)
+        .get();
+      assert.equal(row.status, "needs_fix");
       const tm = getTmEntries(db, "fr");
       assert.equal(
         tm.some((e) => e.source_text.includes("{name}")),
         false,
         "broken translation must not enter TM",
       );
+      const out = fs.readFileSync(path.join(root, "outputs", "fr", "hello.md"), "utf8");
+      assert.match(out, /Hello \{name\}/);
+      assert.doesNotMatch(out, /Bonjour ami/);
       db.close();
+    } finally {
+      process.chdir(prev);
+    }
+  });
+
+  it("continues after a single LLM failure and writes partial output (PG-06)", async () => {
+    const { root, prev } = await setupProject();
+    try {
+      let calls = 0;
+      const mock = {
+        name: "ollama",
+        async translateSegment(text) {
+          calls += 1;
+          if (calls === 2) throw new Error("model overloaded sk-testkey1234567890");
+          return `FR:${text}`;
+        },
+      };
+
+      await runTranslate("fr", {
+        providerInstance: mock,
+        provider: "ollama",
+        concurrency: 1,
+      });
+      assert.equal(process.exitCode, 1);
+      process.exitCode = 0;
+
+      const out = path.join(root, "outputs", "fr", "hello.md");
+      assert.ok(fs.existsSync(out));
+      assert.match(fs.readFileSync(out, "utf8"), /FR:Hello world/);
+    } finally {
+      process.chdir(prev);
+    }
+  });
+
+  it("uses approved TM after review, not the raw LLM draft (PG-12)", async () => {
+    const { root, prev } = await setupProject();
+    try {
+      const mock = {
+        name: "ollama",
+        async translateSegment() {
+          return "MAUVAIS";
+        },
+      };
+      await runTranslate("fr", { providerInstance: mock, provider: "ollama" });
+
+      const db = openDatabase(root);
+      const seg = db
+        .prepare(
+          `SELECT s.id, s.source_text FROM segments s JOIN documents d ON d.id = s.document_id
+           WHERE s.source_text = 'Hello world.'`,
+        )
+        .get();
+      const { upsertTranslation, upsertTranslationMemory } = await import(
+        "../../dist/core/repository.js"
+      );
+      upsertTranslation(db, seg.id, "fr", "Bonjour le monde.", "manual", true);
+      upsertTranslationMemory(db, seg.source_text, "Bonjour le monde.", "fr", null, {
+        approved: true,
+      });
+      db.close();
+
+      fs.writeFileSync(
+        path.join(root, "sources", "other.md"),
+        "Hello world.\n",
+        "utf8",
+      );
+      runImport("sources/other.md", { format: "markdown" });
+
+      let llmCalls = 0;
+      const mock2 = {
+        name: "ollama",
+        async translateSegment(text) {
+          llmCalls += 1;
+          return `LLM:${text}`;
+        },
+      };
+      await runTranslate("fr", {
+        providerInstance: mock2,
+        provider: "ollama",
+        doc: "sources/other.md",
+      });
+      assert.equal(llmCalls, 0, "approved TM exact should skip LLM");
+      assert.match(
+        fs.readFileSync(path.join(root, "outputs", "fr", "other.md"), "utf8"),
+        /Bonjour le monde/,
+      );
     } finally {
       process.chdir(prev);
     }

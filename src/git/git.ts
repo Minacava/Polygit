@@ -3,10 +3,25 @@ import path from "node:path";
 import { simpleGit } from "simple-git";
 import {
   gitPathPrefixes,
+  isManagedOutputPath,
   pathMatchesPrefixes,
+  type LayoutFields,
 } from "../core/layout.js";
 import { readConfig } from "../core/project.js";
 import { assertSafeCloneUrl, assertSafeGitBranch } from "./validate.js";
+
+function readLayoutConfig(projectRoot: string): LayoutFields {
+  const c = readConfig(projectRoot);
+  return {
+    contentRoots: c.contentRoots,
+    outputMode: c.outputMode,
+    outputRoot: c.outputRoot,
+  };
+}
+
+function readTargetLangs(projectRoot: string): string[] {
+  return readConfig(projectRoot).targetLangs;
+}
 
 export { assertSafeCloneUrl, assertSafeGitBranch, isValidGitBranchName } from "./validate.js";
 
@@ -41,27 +56,55 @@ function isTranslationPath(relPath: string, prefixes: string[]): boolean {
 }
 
 /**
- * Stage only configured contentRoots (+ outputRoot for mirror), never .tm/, .env, or secrets.
+ * Stage translation outputs (and optionally sources). Never .tm/, .env, or secrets.
+ * By default only managed outputs are committed so source edits stay out of the PR.
  */
 export async function commitSourcesAndOutputs(
   projectRoot: string,
   message: string,
+  options: { includeSources?: boolean } = {},
 ): Promise<{ committed: boolean; message: string }> {
   const git = simpleGit(projectRoot);
   const status = await git.status();
   const prefixes = translationPrefixes(projectRoot);
+  const config = readLayoutConfig(projectRoot);
+  const langs = readTargetLangs(projectRoot);
 
-  const candidates = [
+  const all = [
     ...status.not_added,
     ...status.modified,
     ...status.created,
     ...status.deleted,
   ].filter((p) => isTranslationPath(p, prefixes));
 
+  const isOutput = (p: string) => {
+    if (langs.length > 0) return isManagedOutputPath(p, config, langs);
+    // Without targetLangs, still treat mirror outputRoot as outputs.
+    if (config.outputMode === "mirror") {
+      const posix = p.replace(/\\/g, "/");
+      return (
+        posix === config.outputRoot || posix.startsWith(`${config.outputRoot}/`)
+      );
+    }
+    return isManagedOutputPath(p, config, langs);
+  };
+
+  const candidates = all.filter((p) => {
+    if (isOutput(p)) return true;
+    return Boolean(options.includeSources);
+  });
+
+  const skipped = all.filter((p) => !isOutput(p) && !options.includeSources);
+  if (skipped.length > 0) {
+    console.warn(
+      `not committing source edits (pass --include-sources to include): ${skipped.join(", ")}`,
+    );
+  }
+
   if (candidates.length === 0) {
     return {
       committed: false,
-      message: `No changes under ${prefixes.join(", ")} to commit.`,
+      message: `No translation output changes under ${prefixes.join(", ")} to commit.`,
     };
   }
 

@@ -14,18 +14,23 @@ const PRE_COMMIT_SCRIPT = `#!/usr/bin/env sh
 # Runs the content lint gate only — never auto-translates or auto-approves.
 set -e
 
+# Prefer the project that owns this hook (supports polygit in a subdirectory).
+HOOK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+cd "$GIT_ROOT" || exit 0
+
 run_polygit_check() {
   if [ -x "./node_modules/.bin/polygit" ]; then
-    exec "./node_modules/.bin/polygit" check
+    exec "./node_modules/.bin/polygit" check --hook
   fi
 
   if command -v polygit >/dev/null 2>&1; then
-    exec polygit check
+    exec polygit check --hook
   fi
 
   if command -v npx >/dev/null 2>&1; then
     if npx --no-install polygit --help >/dev/null 2>&1; then
-      exec npx --no-install polygit check
+      exec npx --no-install polygit check --hook
     fi
   fi
 

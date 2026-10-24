@@ -83,7 +83,7 @@ function seedSchemaV5(root) {
 }
 
 describe("style_hash migration and fingerprint", () => {
-  it("upgrades schema v5 to v6 without losing translations or TM", () => {
+  it("upgrades schema v5 through v7 without losing translations or TM", () => {
     const root = tempProject();
     seedSchemaV5(root);
 
@@ -92,7 +92,7 @@ describe("style_hash migration and fingerprint", () => {
       db.prepare(`SELECT version FROM schema_version LIMIT 1`).get().version,
       SCHEMA_VERSION,
     );
-    assert.equal(SCHEMA_VERSION, 6);
+    assert.equal(SCHEMA_VERSION, 7);
 
     const trCols = db
       .prepare(`PRAGMA table_info(translations)`)
@@ -104,6 +104,7 @@ describe("style_hash migration and fingerprint", () => {
       .map((c) => c.name);
     assert.ok(trCols.includes("style_hash"));
     assert.ok(tmCols.includes("style_hash"));
+    assert.ok(tmCols.includes("approved"));
 
     const tr = db.prepare(`SELECT * FROM translations WHERE id = ?`).get("tr-1");
     assert.equal(tr.target_text, "Bonjour");
@@ -112,6 +113,7 @@ describe("style_hash migration and fingerprint", () => {
     assert.equal(tr.style_hash, null);
 
     const tm = db.prepare(`SELECT * FROM translation_memory WHERE id = ?`).get("tm-1");
+    assert.equal(tm.approved, 1);
     assert.equal(tm.target_text, "Bonjour");
     assert.equal(tm.usage_count, 3);
     assert.equal(tm.style_hash, null);
