@@ -198,11 +198,19 @@ export function listSegmentsForTranslate(
     documentPath?: string;
     segmentIds?: string[];
   },
-): Array<SegmentRow & { document_path: string; document_format: DocumentFormat }> {
+): Array<
+  SegmentRow & {
+    document_path: string;
+    document_format: DocumentFormat;
+    /** Null when no translation row yet; `stale` after glossary/style sync. */
+    translation_status: string | null;
+  }
+> {
   const params: unknown[] = [opts.lang];
 
   let sql = `
-    SELECT s.*, d.path AS document_path, d.format AS document_format
+    SELECT s.*, d.path AS document_path, d.format AS document_format,
+           t.status AS translation_status
     FROM segments s
     JOIN documents d ON d.id = s.document_id
     LEFT JOIN translations t ON t.segment_id = s.id AND t.lang = ?
@@ -220,7 +228,11 @@ export function listSegmentsForTranslate(
 
   sql += ` ORDER BY d.path ASC, s.order_index ASC`;
   return db.prepare(sql).all(...params) as Array<
-    SegmentRow & { document_path: string; document_format: DocumentFormat }
+    SegmentRow & {
+      document_path: string;
+      document_format: DocumentFormat;
+      translation_status: string | null;
+    }
   >;
 }
 

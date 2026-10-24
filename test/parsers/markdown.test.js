@@ -106,4 +106,55 @@ describe("markdown parser", () => {
   it("returns the markdown parser from getParser", () => {
     assert.equal(getParser("markdown").format, "markdown");
   });
+
+  it("preserves VitePress ::: containers, $$ math, hard breaks, and setext (NEW-01)", () => {
+    const input = [
+      "# T",
+      "",
+      "::: tip",
+      "Use test keys while you build.",
+      ":::",
+      "",
+      "Line one.  ",
+      "Line two.",
+      "",
+      "$$",
+      "E = mc^2",
+      "$$",
+      "",
+      "Big title",
+      "=========",
+      "",
+    ].join("\n");
+
+    const parsed = markdownParser.parse(input);
+    const texts = parsed.segments.map((s) => s.sourceText);
+    assert.ok(!texts.some((t) => t.includes(":::")));
+    assert.ok(!texts.some((t) => t.trim() === "$$" || t.includes("E = mc^2")));
+    assert.ok(texts.some((t) => /Use test keys/.test(t)));
+    assert.ok(texts.some((t) => /Big title/.test(t)));
+    assert.ok(!texts.some((t) => /^=+$/.test(t.trim())));
+
+    const identity = new Map(parsed.segments.map((s) => [s.orderIndex, s.sourceText]));
+    const out = markdownParser.serialize(parsed.skeleton, identity);
+    assert.match(out, /::: tip\nUse test keys while you build\.\n:::/);
+    assert.match(out, /\$\$\nE = mc\^2\n\$\$/);
+    assert.match(out, /Big title\n=========/);
+    // Hard break: trailing two spaces before newline preserved between lines.
+    assert.match(out, /Line one\.  \nLine two\./);
+  });
+
+  it("quotes frontmatter values that would break YAML (PG-23)", () => {
+    const input = ["---", "description: Install it", "---", "", "Body.", ""].join("\n");
+    const parsed = markdownParser.parse(input);
+    const map = new Map();
+    for (const seg of parsed.segments) {
+      map.set(
+        seg.orderIndex,
+        seg.sourceText === "Install it" ? "Démarrage : installation" : `[fr] ${seg.sourceText}`,
+      );
+    }
+    const out = markdownParser.serialize(parsed.skeleton, map);
+    assert.match(out, /description:\s*"Démarrage : installation"/);
+  });
 });

@@ -5,6 +5,13 @@ export interface RawSegment {
   sourceText: string;
 }
 
+/** One prose slice plus the exact whitespace that followed it in the source. */
+export interface ProsePart {
+  sourceText: string;
+  /** Original gap after this part (`" "`, `"\n"`, `"  \n"`, …). Empty on the last part. */
+  gapAfter: string;
+}
+
 /** Normalize whitespace for hashing and TM exact match. */
 export function normalizeText(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
@@ -53,57 +60,93 @@ export function createId(prefix = ""): string {
 }
 
 /**
- * Split plain prose into sentence-like segments.
- * Keeps intentional blank-line paragraph boundaries as separate units.
+ * Split plain prose into sentence-like parts, preserving original gaps
+ * (spaces / newlines / hard breaks) between them so callers can re-join
+ * without flattening multi-line Markdown structure.
  */
-export function segmentProse(text: string): RawSegment[] {
-  const normalized = text.replace(/\r\n/g, "\n").trim();
-  if (!normalized) return [];
+export function segmentProse(text: string): ProsePart[] {
+  const normalized = text.replace(/\r\n/g, "\n");
+  if (!normalized.trim()) return [];
 
-  const paragraphs = normalized.split(/\n{2,}/);
-  const segments: RawSegment[] = [];
-  let orderIndex = 0;
+  const paragraphs = normalized.split(/(\n{2,})/);
+  const parts: ProsePart[] = [];
 
-  for (const paragraph of paragraphs) {
-    const trimmed = paragraph.trim();
+  for (let i = 0; i < paragraphs.length; i++) {
+    const chunk = paragraphs[i] ?? "";
+    if (/^\n{2,}$/.test(chunk)) {
+      if (parts.length > 0) {
+        parts[parts.length - 1]!.gapAfter += chunk;
+      }
+      continue;
+    }
+
+    const trimmed = chunk.trim();
     if (!trimmed) continue;
 
     // Keep fenced code / indented blocks atomic when present as a whole paragraph.
     if (trimmed.startsWith("```") || /^\s{4,}\S/m.test(trimmed)) {
-      segments.push({ orderIndex: orderIndex++, sourceText: trimmed });
+      parts.push({ sourceText: trimmed, gapAfter: "" });
       continue;
     }
 
-    const sentences = splitSentences(trimmed);
+    const sentences = splitSentencesWithGaps(trimmed);
     for (const sentence of sentences) {
-      const sourceText = sentence.trim();
-      if (sourceText) {
-        segments.push({ orderIndex: orderIndex++, sourceText });
-      }
+      if (sentence.sourceText) parts.push(sentence);
     }
   }
 
-  return segments;
+  return parts;
+}
+
+/** Back-compat helper used by tests that expect RawSegment[]. */
+export function segmentProseAsRaw(text: string): RawSegment[] {
+  return segmentProse(text).map((part, orderIndex) => ({
+    orderIndex,
+    sourceText: part.sourceText,
+  }));
 }
 
 const ABBR =
   /\b(?:e\.g|i\.e|etc|vs|Mr|Mrs|Ms|Dr|Prof|Inc|Ltd|No|Fig|cf|approx)\.$/i;
 
-function splitSentences(text: string, lang = "en"): string[] {
+function splitSentencesWithGaps(text: string, lang = "en"): ProsePart[] {
   try {
     const segmenter = new Intl.Segmenter(lang, { granularity: "sentence" });
-    const out: string[] = [];
+    const raw: string[] = [];
     for (const { segment } of segmenter.segment(text)) {
-      if (out.length && ABBR.test(out[out.length - 1]!.trimEnd())) {
-        out[out.length - 1] += segment;
+      if (raw.length && ABBR.test(raw[raw.length - 1]!.trimEnd())) {
+        raw[raw.length - 1] += segment;
       } else {
-        out.push(segment);
+        raw.push(segment);
       }
     }
-    const trimmed = out.map((s) => s.trim()).filter(Boolean);
-    return trimmed.length > 0 ? trimmed : [text];
+    if (raw.length === 0) return [{ sourceText: text, gapAfter: "" }];
+
+    const parts: ProsePart[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const seg = raw[i]!;
+      const lead = seg.match(/^\s*/)?.[0] ?? "";
+      const core = seg.slice(lead.length).trimEnd();
+      const trail = seg.slice(lead.length + core.length);
+      if (lead && parts.length > 0) {
+        parts[parts.length - 1]!.gapAfter += lead;
+      }
+      if (!core.trim()) {
+        if (parts.length > 0) parts[parts.length - 1]!.gapAfter += core + trail;
+        continue;
+      }
+      parts.push({ sourceText: core.trim(), gapAfter: trail });
+    }
+    return parts.length > 0 ? parts : [{ sourceText: text, gapAfter: "" }];
   } catch {
-    const parts = text.split(/(?<=[.!?…])\s+(?=["'“‘(\[]*[A-ZÀ-ÖØ-Þ])/u);
-    return parts.length > 0 ? parts : [text];
+    const parts = text.split(/(?<=[.!?…])(\s+)(?=["'“‘(\[]*[A-ZÀ-ÖØ-Þ])/u);
+    // split with capturing groups: [sentence, gap, sentence, gap, ...]
+    const out: ProsePart[] = [];
+    for (let i = 0; i < parts.length; i += 2) {
+      const sourceText = (parts[i] ?? "").trim();
+      const gapAfter = parts[i + 1] ?? "";
+      if (sourceText) out.push({ sourceText, gapAfter });
+    }
+    return out.length > 0 ? out : [{ sourceText: text, gapAfter: "" }];
   }
 }

@@ -43,8 +43,14 @@ describe("segmenter", () => {
   it("splits prose into sentence-like segments", () => {
     const segments = segmentProse("Hello world. This is next.");
     assert.ok(segments.length >= 2);
-    assert.equal(segments[0]?.orderIndex, 0);
     assert.match(segments[0]?.sourceText ?? "", /Hello/);
+    assert.ok((segments[0]?.gapAfter ?? "").length >= 0);
+  });
+
+  it("preserves newline gaps between sentences (NEW-01)", () => {
+    const parts = segmentProse("Line one.\nLine two.");
+    assert.ok(parts.length >= 2);
+    assert.match(parts[0]?.gapAfter ?? "", /\n/);
   });
 
   it("keeps fenced code blocks atomic", () => {

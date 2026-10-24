@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 1.2.8
+
+Demo-blocking and high-severity fixes from the 1.2.7 re-test:
+
+- Fix (NEW-01): keep original gaps between sentences (`\n`, hard breaks); treat VitePress `::: tip` / `:::` containers, `$$…$$` math fences, and setext underlines as structure (no longer flattened into one line)
+- Fix (NEW-02): glossary/style-stale segments skip TM exact reuse so `--auto-retranslate` reaches the LLM with the new term
+- Fix (NEW-03): `translate` checks source `content_hash` before any LLM call; regenerates missing output files even when nothing is pending
+- Fix (PG-23): YAML-quote frontmatter values that contain `: ` or other special characters so VitePress/Docusaurus still parse
+
 ## 1.2.7
 
 Audit fixes from the 1.2.6 review (PG-01…PG-44):

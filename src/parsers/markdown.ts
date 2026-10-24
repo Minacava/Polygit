@@ -5,6 +5,8 @@ interface MarkdownBlock {
   type: "segment" | "raw";
   orderIndex?: number;
   text: string;
+  /** When set, serialize escapes the translation as a YAML double-quoted scalar. */
+  yamlEscape?: boolean;
 }
 
 interface MarkdownSkeleton {
@@ -24,13 +26,18 @@ const JSX_BLOCK = /^\s*<\/?[A-Z][\w.]*/;
 const HEADING_ID = /\s*(\{#[^}]+\})\s*$/;
 const DEFAULT_FM_KEYS = new Set(["title", "description", "sidebar_label"]);
 const FM_KEY = /^(\s*([\w-]+)\s*:\s*)(["']?)(.*)$/;
+/** VitePress / markdown-it container fences: `::: tip`, `::: warning Title`, `:::`. */
+const CONTAINER_FENCE = /^:::(?:\s|$)/;
+const SETEXT_UNDERLINE = /^(=+|-+)\s*$/;
 
 /**
  * Markdown parser:
  * - YAML front matter: configurable keys become segments; rest stays raw
  * - fenced code (``` / ~~~), HTML comments, ref defs, MDX/JSX stay raw
+ * - VitePress `:::` containers and `$$` math blocks stay raw
  * - list items (incl. `1)`) and table cells become segments
  * - blockquotes: `>` prefix raw, body segmented
+ * - prose sentence gaps preserve original newlines / hard breaks
  */
 export const markdownParser: Parser = {
   format: "markdown",
@@ -46,9 +53,14 @@ export const markdownParser: Parser = {
       if (text.length) blocks.push({ type: "raw", text });
     };
 
-    const pushSegment = (text: string) => {
+    const pushSegment = (text: string, opts: { yamlEscape?: boolean } = {}) => {
       segments.push({ orderIndex, sourceText: text });
-      blocks.push({ type: "segment", orderIndex, text });
+      blocks.push({
+        type: "segment",
+        orderIndex,
+        text,
+        ...(opts.yamlEscape ? { yamlEscape: true } : {}),
+      });
       orderIndex += 1;
     };
 
@@ -92,12 +104,13 @@ export const markdownParser: Parser = {
             // Strip matching closing quote if present.
             if (quote && value.endsWith(quote)) {
               value = value.slice(0, -quote.length);
-              pushRaw(prefix + quote);
-              if (value) pushSegment(value);
-              pushRaw(`${quote}\n`);
+              // Drop source quotes; serialize re-quotes when YAML needs it (PG-23).
+              pushRaw(prefix);
+              if (value) pushSegment(value, { yamlEscape: true });
+              pushRaw("\n");
             } else {
               pushRaw(prefix);
-              if (value) pushSegment(value);
+              if (value) pushSegment(value, { yamlEscape: true });
               pushRaw("\n");
             }
           } else {
@@ -152,13 +165,61 @@ export const markdownParser: Parser = {
       }
       for (let p = 0; p < parts.length; p++) {
         pushSegment(restoreInline(parts[p]!.sourceText, tokens));
-        if (p < parts.length - 1) pushRaw(" ");
+        if (p < parts.length - 1) {
+          // Preserve original gap (space, `\n`, hard-break `  \n`, …) — never flatten to " ".
+          const gap = parts[p]!.gapAfter;
+          pushRaw(gap.length > 0 ? gap : " ");
+        }
       }
       pushRaw("\n");
     };
 
     while (i < lines.length) {
       const line = lines[i] ?? "";
+
+      // VitePress / markdown-it containers: keep fence lines raw (content between is prose).
+      if (CONTAINER_FENCE.test(line.trim())) {
+        flushProse();
+        pushRaw(`${line}\n`);
+        i += 1;
+        prevBlank = false;
+        continue;
+      }
+
+      // Display-math fences: keep the whole $$ … $$ block raw.
+      if (line.trim() === "$$") {
+        flushProse();
+        const math = [line];
+        i += 1;
+        while (i < lines.length) {
+          math.push(lines[i] ?? "");
+          if ((lines[i] ?? "").trim() === "$$") {
+            i += 1;
+            break;
+          }
+          i += 1;
+        }
+        pushRaw(`${math.join("\n")}\n`);
+        prevBlank = false;
+        continue;
+      }
+
+      // Setext headings: title line(s) in buffer + === / --- underline.
+      // Orphan underline / thematic break (empty buffer) stays raw.
+      if (SETEXT_UNDERLINE.test(line)) {
+        if (proseBuffer.length > 0 && proseBuffer.some((l) => l.trim().length > 0)) {
+          const title = proseBuffer.map((l) => l.trim()).filter(Boolean).join(" ");
+          proseBuffer = [];
+          if (title) pushSegment(title);
+          pushRaw(`\n${line}\n`);
+        } else {
+          flushProse();
+          pushRaw(`${line}\n`);
+        }
+        i += 1;
+        prevBlank = false;
+        continue;
+      }
 
       const fenceOpen = line.match(FENCE_OPEN);
       if (fenceOpen) {
@@ -317,13 +378,29 @@ export const markdownParser: Parser = {
     let out = "";
     for (const block of blocks) {
       if (block.type === "raw") out += block.text;
-      else out += translations.get(block.orderIndex ?? -1) ?? block.text;
+      else {
+        const value = translations.get(block.orderIndex ?? -1) ?? block.text;
+        out += block.yamlEscape ? yamlQuoteIfNeeded(value) : value;
+      }
     }
     if (out.length && !out.endsWith("\n")) out += "\n";
     if (eol === "\r\n") return out.replace(/\r?\n/g, "\r\n");
     return out;
   },
 };
+
+/** Quote a YAML scalar when it would break unquoted parsing (e.g. French " : "). */
+function yamlQuoteIfNeeded(value: string): string {
+  if (
+    value === "" ||
+    /[\n\r:#\[\]{},&*?|>!%@`'"]/.test(value) ||
+    value !== value.trim() ||
+    value.includes(": ")
+  ) {
+    return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return value;
+}
 
 function splitTableCells(row: string): string[] {
   let s = row.trim();

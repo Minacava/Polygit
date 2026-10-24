@@ -8,6 +8,7 @@ import {
   resolveModelSync,
 } from "../connectors/index.js";
 import { pickOllamaModelInteractively } from "./models.js";
+import { sha256Text } from "../core/hash.js";
 import { assertLangCode } from "../core/lang.js";
 import { toOutputPath } from "../core/layout.js";
 import { mapPool, TranslationMemoryIndex } from "../core/matcher.js";
@@ -112,6 +113,32 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
       markStyleHashStaleByExpected(db, lang, expectedStyleHash);
     }
 
+    // NEW-03: refuse source drift before any LLM/TM work (check used to run only at write).
+    const docRows = (
+      db.prepare(`SELECT path, content_hash FROM documents ORDER BY path`).all() as Array<{
+        path: string;
+        content_hash: string | null;
+      }>
+    ).filter((d) => (documentPath ? d.path === documentPath : true));
+    const drifted: string[] = [];
+    for (const doc of docRows) {
+      if (doc.content_hash == null) continue;
+      try {
+        const abs = resolveInsideProject(root, doc.path);
+        if (!fs.existsSync(abs)) continue;
+        if (sha256Text(fs.readFileSync(abs, "utf8")) !== doc.content_hash) {
+          drifted.push(doc.path);
+        }
+      } catch {
+        // ignore unreadable paths here; write path will surface errors
+      }
+    }
+    if (drifted.length > 0) {
+      throw new Error(
+        `${drifted.join(", ")} changed since import. Run "polygit import" first.`,
+      );
+    }
+
     const segments = listSegmentsForTranslate(db, {
       lang,
       ...(documentPath ? { documentPath } : {}),
@@ -120,6 +147,22 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
 
     if (segments.length === 0) {
       console.log(`No segments need translation for lang=${lang}.`);
+      // Still regenerate missing output skeletons (NEW-03 / PG-15).
+      if (!options.dryRun) {
+        const allDocs = docRows.map((d) => d.path);
+        const missingOutputs = allDocs.filter((docPath) => {
+          try {
+            const outRel = toOutputPath(docPath, lang, config);
+            return !fs.existsSync(resolveInsideProject(root, outRel));
+          } catch {
+            return false;
+          }
+        });
+        if (missingOutputs.length > 0) {
+          const written = writeOutputDocuments(db, root, lang, missingOutputs);
+          if (written.length) console.log(`  wrote: ${written.join(", ")}`);
+        }
+      }
       return;
     }
 
@@ -162,7 +205,10 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
         ...cliStyle,
       });
       const styleHash = computeStyleHash(resolvedStyle, styleGuide);
-      const match = tmIndex.match(segment.source_text);
+      // NEW-02: glossary/style-stale rows must not reuse the old approved TM hit
+      // (otherwise --auto-retranslate never sends the new glossary term to the LLM).
+      const skipTmExact = segment.translation_status === "stale";
+      const match = skipTmExact ? null : tmIndex.match(segment.source_text);
 
       if (match?.kind === "exact" && styleHashesMatch(match.entry.style_hash, styleHash)) {
         if (!options.dryRun) {
