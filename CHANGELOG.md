@@ -7,6 +7,13 @@
 - Fix (PG-03): publish / review “all approved” counts segments without a translation row
 - Fix (PG-05): re-key segment ids on source edits so identical re-imports stay unchanged
 - Fix (PG-04): `check` fails on broken placeholders; `--require-approved` fails on unapproved translations
+- Fix (PG-06): translate continues after LLM errors, writes partial outputs, exits 1
+- Fix (PG-07): `translate --dry-run` no longer creates/checkouts a work branch
+- Fix (PG-08/09): safer quote stripping; strip `<think>` blocks and translation preambles
+- Fix (PG-10/11): stronger placeholder checks; failed checks mark `needs_fix` and keep source on disk
+- Fix (PG-12): TM exact reuse only from approved entries; review updates TM
+- Fix (PG-28): reject truncated Claude/OpenAI completions (`max_tokens` / `finish_reason=length`)
+- Schema v7: `translations.status` includes `needs_fix`; `translation_memory.approved`
 
 ## 1.2.6
 

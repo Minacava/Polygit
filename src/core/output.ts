@@ -39,9 +39,7 @@ function buildTranslationMap(
   const byOrder = new Map<number, string>();
   for (const segment of segments) {
     const tr = translations.get(segment.id);
-    // `needs_fix` is reserved for placeholder failures (PG-11); until that
-    // status is in the schema CHECK, compare via string for forward-compat.
-    const useSource = !tr || String(tr.status) === "needs_fix";
+    const useSource = !tr || tr.status === "needs_fix";
     const text = useSource ? segment.source_text : tr!.target_text;
     byOrder.set(segment.order_index, text);
     bySource.set(normalizeText(segment.source_text), text);

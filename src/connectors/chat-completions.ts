@@ -10,7 +10,10 @@ import {
 } from "./provider.js";
 
 interface ChatCompletionsResponse {
-  choices?: Array<{ message?: { content?: string | null } }>;
+  choices?: Array<{
+    message?: { content?: string | null };
+    finish_reason?: string | null;
+  }>;
   error?: { message?: string };
 }
 
@@ -77,7 +80,13 @@ export function createChatCompletionsProvider(
       );
     }
 
-    const textOut = result.data.choices?.[0]?.message?.content?.trim();
+    const choice = result.data.choices?.[0];
+    if (choice?.finish_reason === "length") {
+      throw new Error(
+        `${opts.label} output truncated (finish_reason=length); segment too long.`,
+      );
+    }
+    const textOut = choice?.message?.content?.trim();
     if (!textOut) {
       throw new Error(`${opts.label} returned an empty response.`);
     }
@@ -96,7 +105,7 @@ export function createChatCompletionsProvider(
       const raw = await complete(
         buildTranslationMessages(text, sourceLang, targetLang, context),
       );
-      return sanitizeLlmTranslation(raw);
+      return sanitizeLlmTranslation(raw, text);
     },
 
     complete,

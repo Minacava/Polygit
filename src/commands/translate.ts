@@ -3,6 +3,7 @@ import type { ProviderName } from "../connectors/index.js";
 import {
   createProvider,
   listOllamaModels,
+  redactSecrets,
   resolveModelSync,
 } from "../connectors/index.js";
 import { pickOllamaModelInteractively } from "./models.js";
@@ -64,9 +65,6 @@ export interface TranslateOptions {
 export async function runTranslate(lang: string, options: TranslateOptions = {}): Promise<void> {
   assertLangCode(lang);
   const root = requireProjectRoot();
-  if (!options.noBranch) {
-    await ensureTranslationBranch(root, lang);
-  }
   const config = readConfig(root);
   const cliStyle = {
     ...(options.style !== undefined ? { style: options.style } : {}),
@@ -120,6 +118,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
         lang: e.lang,
         usage_count: e.usage_count,
         style_hash: e.style_hash,
+        approved: e.approved,
       })),
     );
 
@@ -163,12 +162,14 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
             false,
             styleHash,
           );
+          // Exact hits are already approved in TM; bump usage without demoting.
           upsertTranslationMemory(
             db,
             segment.source_text,
             match.entry.target_text,
             lang,
             styleHash,
+            { approved: true },
           );
           tmIndex.add({
             id: match.entry.id,
@@ -177,6 +178,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
             lang,
             usage_count: 1,
             style_hash: styleHash,
+            approved: 1,
           });
         }
         tmExact += 1;
@@ -231,9 +233,21 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
       bar.start(llmQueue.length, 0);
     }
 
+    // Create/checkout the work branch only when there is real work and not dry-run.
+    if (!options.dryRun && !options.noBranch && (llmQueue.length > 0 || tmExact > 0 || tmFuzzy > 0)) {
+      await ensureTranslationBranch(root, lang);
+    }
+
     let llmDone = 0;
+    const failures: Array<{ id: string; error: string }> = [];
+    let consecutiveFailures = 0;
+    const maxConsecutive = 3;
+    let stopWorkers = false;
+
     try {
       await mapPool(llmQueue, concurrency, async (segment) => {
+        if (stopWorkers) return;
+
         const resolvedStyle = resolveStyleForDocument(config.style, {
           documentPath: segment.document_path,
           lang,
@@ -243,38 +257,66 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
         const maxAttempts = Math.max(1, (options.placeholderRetries ?? 1) + 1);
         let translated = "";
         let missing: string[] = [];
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          translated = await ensureProvider().translateSegment(
-            segment.source_text,
-            config.sourceLang,
-            lang,
-            {
-              glossary,
-              documentPath: segment.document_path,
-              ...(resolvedStyle ? { style: resolvedStyle } : {}),
-              ...(styleGuide ? { styleGuide } : {}),
-              ...(attempt > 0
-                ? {
-                    notes:
-                      `Previous translation dropped required placeholders: ${missing.join(", ")}. ` +
-                      `Preserve every placeholder, HTML tag, and link/image URL exactly (link text may change).`,
-                  }
-                : {}),
-            },
+
+        try {
+          for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            translated = await ensureProvider().translateSegment(
+              segment.source_text,
+              config.sourceLang,
+              lang,
+              {
+                glossary,
+                documentPath: segment.document_path,
+                ...(resolvedStyle ? { style: resolvedStyle } : {}),
+                ...(styleGuide ? { styleGuide } : {}),
+                ...(attempt > 0
+                  ? {
+                      notes:
+                        `Previous translation dropped required placeholders: ${missing.join(", ")}. ` +
+                        `Preserve every placeholder, HTML tag, and link/image URL exactly (link text may change).`,
+                    }
+                  : {}),
+              },
+            );
+            missing = missingPlaceholders(segment.source_text, translated);
+            if (missing.length === 0) break;
+          }
+        } catch (err) {
+          const message = redactSecrets(err instanceof Error ? err.message : String(err));
+          failures.push({ id: segment.id, error: message });
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= maxConsecutive) stopWorkers = true;
+          console.warn(
+            `LLM failed for ${segment.document_path} (${segment.id.slice(0, 8)}…): ${message}`,
           );
-          missing = missingPlaceholders(segment.source_text, translated);
-          if (missing.length === 0) break;
+          llmDone += 1;
+          bar?.update(llmDone);
+          return;
         }
 
+        consecutiveFailures = 0;
+
         if (missing.length > 0) {
-          // Keep draft for review; do not write broken text into TM as exact memory.
-          upsertTranslation(db, segment.id, lang, translated, "llm", false, styleHash);
+          // Persist as needs_fix; output writer keeps source text on disk.
+          upsertTranslation(
+            db,
+            segment.id,
+            lang,
+            translated,
+            "llm",
+            false,
+            styleHash,
+            "needs_fix",
+          );
           console.warn(
-            `Placeholder check failed for ${segment.document_path} (${segment.id.slice(0, 8)}…): missing ${missing.join(", ")}. Left unapproved for review.`,
+            `Placeholder check failed for ${segment.document_path} (${segment.id.slice(0, 8)}…): missing ${missing.join(", ")}. Marked needs_fix.`,
           );
         } else {
           upsertTranslation(db, segment.id, lang, translated, "llm", false, styleHash);
-          upsertTranslationMemory(db, segment.source_text, translated, lang, styleHash);
+          // Draft TM only — exact reuse waits for review approval (PG-12).
+          upsertTranslationMemory(db, segment.source_text, translated, lang, styleHash, {
+            approved: false,
+          });
           tmIndex.add({
             id: `runtime_${segment.id}`,
             source_text: segment.source_text,
@@ -282,6 +324,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
             lang,
             usage_count: 1,
             style_hash: styleHash,
+            approved: 0,
           });
         }
         llm += 1;
@@ -294,6 +337,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
 
     let written: string[] = [];
     if (!options.dryRun) {
+      // Always write whatever succeeded so disk stays coherent after partial failure.
       written = writeOutputDocuments(db, root, lang, [...touchedDocs]);
       if (!config.targetLangs.includes(lang)) {
         writeConfig(root, {
@@ -308,6 +352,10 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
       `${prefix}Translated ${segments.length} segment(s) → ${lang} (tm-exact=${tmExact}, tm-fuzzy=${tmFuzzy}, llm=${llm}, provider=${providerName}, model=${modelChoice.model})`,
     );
     if (written.length) console.log(`  wrote: ${written.join(", ")}`);
+    if (failures.length > 0) {
+      console.error(`${failures.length} segment(s) failed during translate.`);
+      process.exitCode = 1;
+    }
   } finally {
     db.close();
   }
