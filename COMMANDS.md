@@ -130,7 +130,7 @@ polygit translate fr --style=academic --formality=formal
 | `--formality <value>` | One-off formality; overrides config for this run |
 | `--dry-run` | Plan only — no writes, no LLM calls |
 | `--accept-fuzzy` | Apply fuzzy TM as unapproved drafts (skip LLM) |
-| `--no-branch` | Do not auto-create/checkout `polygit/translate-<lang>-…` when on main/master |
+| `--no-branch` | Do not auto-create/checkout `polygit/<lang>-YYYYMMDD` when on main/master |
 
 ---
 
@@ -222,7 +222,7 @@ polygit review --lang=fr --approve-all
 | `--lang <lang>` | Language to review (**required**) |
 | `--status <s>` | Filter: `pending` \| `translated` \| `stale` \| `approved` |
 | `--approve-all` | Approve every listed segment that already has a TARGET (no interactive prompt) |
-| `--no-branch` | Do not auto-create/checkout `polygit/translate-<lang>-…` when on main/master |
+| `--no-branch` | Do not auto-create/checkout `polygit/<lang>-YYYYMMDD` when on main/master |
 
 When no unapproved segments remain, review prints a reminder to run `polygit publish --lang=<lang> --yes` (opens a PR to main).
 
@@ -281,7 +281,7 @@ polygit log --grep-translate
 
 After local approval: commit (if needed) → push the translation branch → open a **GitHub PR or GitLab MR into main** (or `--target-branch`).
 
-If you already ran `translate`/`review` on `polygit/translate-<lang>-…`, publish reuses that branch instead of creating a second one.
+If you already ran `translate`/`review` on `polygit/<lang>-YYYYMMDD` (or a legacy `polygit/translate-<lang>-…` branch), publish reuses that branch instead of creating a second one.
 
 ```bash
 polygit publish --lang=fr --yes

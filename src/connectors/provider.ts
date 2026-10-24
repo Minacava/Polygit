@@ -75,7 +75,8 @@ export function buildTranslationMessages(
   const system = [
     "You are a professional translator.",
     `Translate from ${sourceLang} to ${targetLang}.`,
-    "Return only the translated text, with no quotes or commentary.",
+    "Return only the translated text, with no quotes, no markdown fences, and no commentary.",
+    "Do not wrap the whole translation in quotation marks.",
     "Preserve Markdown syntax, placeholders, HTML tags, and ICU/message format tokens.",
     "You may translate visible link text; keep link and image destinations (URLs/paths) unchanged.",
     `Do not copy the ${DOCUMENT_DATA_START} or ${DOCUMENT_DATA_END} delimiter tags into your output.`,
@@ -113,21 +114,48 @@ function sanitizeDocumentPath(documentPath: string): string {
   return documentPath.replace(/[\r\n\0]+/g, " ").slice(0, 500);
 }
 
+const WRAP_QUOTE_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ['"', '"'],
+  ["'", "'"],
+  ["\u201c", "\u201d"], // “ ”
+  ["\u2018", "\u2019"], // ‘ ’
+  ["«", "»"],
+  ["「", "」"],
+];
+
+function stripWrappingQuotes(text: string): string {
+  let out = text;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const trimmed = out.trim();
+    for (const [open, close] of WRAP_QUOTE_PAIRS) {
+      if (trimmed.startsWith(open) && trimmed.endsWith(close) && trimmed.length > open.length + close.length) {
+        out = trimmed.slice(open.length, trimmed.length - close.length).trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+  return out.trim();
+}
+
+function stripMarkdownFence(text: string): string {
+  const trimmed = text.trim();
+  const fence = trimmed.match(/^```(?:\w+)?\r?\n([\s\S]*?)\r?\n```$/);
+  return fence?.[1]?.trim() ?? trimmed;
+}
+
 /**
  * Strip prompt delimiter tags that models sometimes echo into the translation.
- * Also drops a single pair of wrapping quotes some models add.
+ * Also drops wrapping quotes / markdown fences some models add around the whole answer.
  */
 export function sanitizeLlmTranslation(text: string): string {
   let out = text.replace(/\r\n/g, "\n").trim();
   // Remove every occurrence (models wrap, prefix, or echo mid-output).
   out = out.split(DOCUMENT_DATA_START).join("").split(DOCUMENT_DATA_END).join("");
-  out = out.trim();
-  if (
-    (out.startsWith('"') && out.endsWith('"')) ||
-    (out.startsWith("'") && out.endsWith("'"))
-  ) {
-    out = out.slice(1, -1).trim();
-  }
+  out = stripMarkdownFence(out);
+  out = stripWrappingQuotes(out);
   return out;
 }
 

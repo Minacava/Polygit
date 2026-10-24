@@ -151,7 +151,7 @@ program
   .option("--accept-fuzzy", "Apply fuzzy TM matches as unapproved drafts (skip LLM)", false)
   .option(
     "--no-branch",
-    "Do not auto-create/checkout polygit/translate-<lang>-… when on main/master",
+    "Do not auto-create/checkout polygit/<lang>-YYYYMMDD when on main/master",
   )
   .option(
     "--style <preset>",
@@ -238,7 +238,7 @@ program
   )
   .option(
     "--no-branch",
-    "Do not auto-create/checkout polygit/translate-<lang>-… when on main/master",
+    "Do not auto-create/checkout polygit/<lang>-YYYYMMDD when on main/master",
   )
   .action(
     async (opts: {

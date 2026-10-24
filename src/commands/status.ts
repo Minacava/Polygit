@@ -1,6 +1,7 @@
 import {
   CONTENT_EXTENSIONS,
   describeLayout,
+  isManagedOutputPath,
   layoutFromConfig,
   listContentFiles,
 } from "../core/layout.js";
@@ -8,19 +9,33 @@ import { assertLangCode } from "../core/lang.js";
 import { openProjectDb, readConfig, requireProjectRoot } from "../core/project.js";
 import { getStatusCounts } from "../core/repository.js";
 
+function formatFileCount(n: number): string {
+  return n === 1 ? "1 file on disk" : `${n} files on disk`;
+}
+
 export function runStatus(options: { lang?: string } = {}): void {
   if (options.lang !== undefined) assertLangCode(options.lang);
   const root = requireProjectRoot();
   const config = readConfig(root);
   const layout = layoutFromConfig(config);
+  // Exclude translation outputs that live under contentRoots (sidecar / in-place).
+  const outputLangs = [
+    ...new Set(
+      [...config.targetLangs, ...(options.lang ? [options.lang] : [])].map((l) =>
+        l.trim().toLowerCase(),
+      ),
+    ),
+  ].filter(Boolean);
 
   console.log(`Layout: ${describeLayout(layout)}`);
-  const onDisk = listContentFiles(root, layout.contentRoots, CONTENT_EXTENSIONS);
+  const onDisk = listContentFiles(root, layout.contentRoots, CONTENT_EXTENSIONS).filter(
+    (p) => !isManagedOutputPath(p, layout, outputLangs),
+  );
   for (const contentRoot of layout.contentRoots) {
     const count = onDisk.filter(
       (p) => p === contentRoot || p.startsWith(`${contentRoot}/`),
     ).length;
-    console.log(`  ${contentRoot}/ — ${count} file(s) on disk`);
+    console.log(`  ${contentRoot}/ — ${formatFileCount(count)}`);
   }
 
   const db = openProjectDb(root);

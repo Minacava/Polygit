@@ -72,7 +72,7 @@ npx polygit log --stat
 
 `init` creates `.tmconfig.json`, `sources/`, `outputs/`, `.tm/` (SQLite), `.gitignore`, and `.env.example`. Copy `.env.example` → `.env` only if you use cloud LLM keys or forge tokens.
 
-> **On main?** `translate` / `review` automatically create a `polygit/translate-<lang>-YYYYMMDD` branch when you're on `main`/`master`, so translation work never lands on the default branch. `publish` then reuses that branch. Pass `--no-branch` to opt out.
+> **On main?** `translate` / `review` automatically create a `polygit/<lang>-YYYYMMDD` branch when you're on `main`/`master`, so translation work never lands on the default branch. `publish` then reuses that branch. Pass `--no-branch` to opt out.
 
 ### Contribute translations upstream
 

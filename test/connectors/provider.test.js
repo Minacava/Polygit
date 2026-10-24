@@ -60,6 +60,14 @@ describe("provider helpers", () => {
     assert.equal(sanitizeLlmTranslation("  plain text  "), "plain text");
   });
 
+  it("strips wrapping quotes and markdown fences from model output", () => {
+    assert.equal(sanitizeLlmTranslation('"Bonjour"'), "Bonjour");
+    assert.equal(sanitizeLlmTranslation("\u201cBonjour\u201d"), "Bonjour");
+    assert.equal(sanitizeLlmTranslation("«Bonjour»"), "Bonjour");
+    assert.equal(sanitizeLlmTranslation("```\nBonjour\n```"), "Bonjour");
+    assert.equal(sanitizeLlmTranslation("```md\nHola\n```"), "Hola");
+  });
+
   it("asks the model not to echo delimiter tags", () => {
     const messages = buildTranslationMessages("Hello", "en", "fr");
     assert.match(messages[0]?.content ?? "", /Do not copy the <TRANSLATION_DOCUMENT>/);
