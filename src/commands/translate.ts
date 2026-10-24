@@ -1,4 +1,5 @@
 import cliProgress from "cli-progress";
+import fs from "node:fs";
 import type { ProviderName } from "../connectors/index.js";
 import {
   createProvider,
@@ -8,6 +9,7 @@ import {
 } from "../connectors/index.js";
 import { pickOllamaModelInteractively } from "./models.js";
 import { assertLangCode } from "../core/lang.js";
+import { toOutputPath } from "../core/layout.js";
 import { mapPool, TranslationMemoryIndex } from "../core/matcher.js";
 import { writeOutputDocuments } from "../core/output.js";
 import { missingPlaceholders } from "../core/placeholders.js";
@@ -60,12 +62,23 @@ export interface TranslateOptions {
   style?: string;
   /** CLI formality override (wins over config). */
   formality?: string;
+  /** Explicitly add `lang` to targetLangs when missing (PG-25). */
+  addLang?: boolean;
 }
 
 export async function runTranslate(lang: string, options: TranslateOptions = {}): Promise<void> {
   assertLangCode(lang);
   const root = requireProjectRoot();
   const config = readConfig(root);
+  if (
+    !config.targetLangs.includes(lang) &&
+    config.targetLangs.length > 0 &&
+    !options.addLang
+  ) {
+    throw new Error(
+      `"${lang}" is not in targetLangs (${config.targetLangs.join(", ")}). Pass --add-lang to add it.`,
+    );
+  }
   const cliStyle = {
     ...(options.style !== undefined ? { style: options.style } : {}),
     ...(options.formality !== undefined ? { formality: options.formality } : {}),
@@ -338,8 +351,27 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
     let written: string[] = [];
     if (!options.dryRun) {
       // Always write whatever succeeded so disk stays coherent after partial failure.
-      written = writeOutputDocuments(db, root, lang, [...touchedDocs]);
-      if (!config.targetLangs.includes(lang)) {
+      // Also write skeleton outputs for imported docs that have 0 segments (PG-15).
+      const allDocs = (
+        db.prepare(`SELECT path FROM documents ORDER BY path`).all() as Array<{
+          path: string;
+        }>
+      ).map((r) => r.path);
+      const missingOutputs = allDocs.filter((docPath) => {
+        try {
+          const outRel = toOutputPath(docPath, lang, config);
+          const abs = resolveInsideProject(root, outRel);
+          return !fs.existsSync(abs);
+        } catch {
+          return false;
+        }
+      });
+      const toWrite = [...new Set([...touchedDocs, ...missingOutputs])];
+      written = writeOutputDocuments(db, root, lang, toWrite);
+      if (
+        !config.targetLangs.includes(lang) &&
+        (options.addLang || config.targetLangs.length === 0)
+      ) {
         writeConfig(root, {
           ...config,
           targetLangs: [...config.targetLangs, lang],

@@ -6,6 +6,8 @@ export interface ParsedDocument {
   segments: RawSegment[];
   /** Opaque structure needed to re-serialize after translation (JSON paths, markdown blocks, …). */
   skeleton: unknown;
+  /** Non-fatal parse notes (e.g. unterminated front matter). */
+  warnings?: string[];
 }
 
 export interface Parser {

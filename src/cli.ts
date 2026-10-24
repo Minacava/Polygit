@@ -12,6 +12,7 @@ import { runHooksInstall } from "./commands/hooks.js";
 import { runImport } from "./commands/import.js";
 import { runInit } from "./commands/init.js";
 import { runLog } from "./commands/log.js";
+import { runPrune } from "./commands/prune.js";
 import { runPublish } from "./commands/publish.js";
 import { runReview } from "./commands/review.js";
 import { runStatus } from "./commands/status.js";
@@ -120,21 +121,21 @@ program
 
 program
   .command("import")
-  .description("Import a file, glob, or content root into pending segments")
-  .argument("[path]", "File or glob under contentRoots (e.g. docs/**/*.md)")
+  .description("Import a file, glob, directory, or content root into pending segments")
+  .argument("[paths...]", "File(s), directory, or glob under contentRoots")
   .option("--root <dir>", "Import all known files under this directory")
   .option("--format <format>", "markdown | json-i18n | po | yaml | xliff")
-  .action((file: string | undefined, opts: { format?: string; root?: string }) => {
+  .action((files: string[], opts: { format?: string; root?: string }) => {
     const format = opts.format;
     if (format && !isDocumentFormat(format)) {
       throw new Error(
         `Unsupported format: ${format}. Use markdown, json-i18n, po, yaml, or xliff.`,
       );
     }
-    if (!file && !opts.root) {
+    if ((!files || files.length === 0) && !opts.root) {
       throw new Error("Provide a file/glob path or --root=<dir>.");
     }
-    runImport(file, {
+    runImport(files.length === 1 ? files[0] : files.length > 0 ? files : undefined, {
       ...(format && isDocumentFormat(format) ? { format } : {}),
       ...(opts.root ? { root: opts.root } : {}),
     });
@@ -149,6 +150,11 @@ program
   .option("--model <id>", "Model id/tag for the selected provider")
   .option("--dry-run", "Show plan without writing or calling the LLM", false)
   .option("--accept-fuzzy", "Apply fuzzy TM matches as unapproved drafts (skip LLM)", false)
+  .option(
+    "--add-lang",
+    "Add this language to targetLangs when it is missing",
+    false,
+  )
   .option(
     "--no-branch",
     "Do not auto-create/checkout polygit/<lang>-YYYYMMDD when on main/master",
@@ -170,6 +176,7 @@ program
         model?: string;
         dryRun?: boolean;
         acceptFuzzy?: boolean;
+        addLang?: boolean;
         branch?: boolean;
         style?: string;
         formality?: string;
@@ -192,9 +199,22 @@ program
       ...(opts.formality !== undefined ? { formality: opts.formality } : {}),
       dryRun: Boolean(opts.dryRun),
       acceptFuzzy: Boolean(opts.acceptFuzzy),
+      addLang: Boolean(opts.addLang),
       // Commander --no-* defaults branch=true; --no-branch sets branch=false.
       // Do not pass a custom default of false — that made noBranch always true.
       noBranch: opts.branch === false,
+    });
+  });
+
+program
+  .command("prune")
+  .description("Forget documents whose source file was deleted")
+  .option("--outputs", "Also delete their translation output files", false)
+  .option("--dry-run", "Show what would be pruned", false)
+  .action((opts: { outputs?: boolean; dryRun?: boolean }) => {
+    runPrune({
+      outputs: Boolean(opts.outputs),
+      dryRun: Boolean(opts.dryRun),
     });
   });
 

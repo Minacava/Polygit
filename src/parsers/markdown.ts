@@ -48,18 +48,30 @@ export const markdownParser: Parser = {
     }
     let i = 0;
 
+    const warnings: string[] = [];
     if ((lines[0] ?? "").trim() === "---") {
       const fm: string[] = [lines[0] ?? ""];
       i = 1;
+      let closed = false;
       while (i < lines.length) {
         fm.push(lines[i] ?? "");
         if ((lines[i] ?? "").trim() === "---") {
           i += 1;
+          closed = true;
           break;
         }
         i += 1;
       }
-      pushRaw(fm.join("\n") + "\n");
+      if (!closed) {
+        warnings.push(
+          "unterminated front matter; treating file as body (no segments from YAML)",
+        );
+        // Reset: treat the whole file as body so content is still segmentable.
+        blocks.length = 0;
+        i = 0;
+      } else {
+        pushRaw(fm.join("\n") + "\n");
+      }
     }
 
     let proseBuffer: string[] = [];
@@ -178,7 +190,12 @@ export const markdownParser: Parser = {
     }
     flushProse();
 
-    return { format: "markdown", segments, skeleton: { blocks } satisfies MarkdownSkeleton };
+    return {
+      format: "markdown",
+      segments,
+      skeleton: { blocks } satisfies MarkdownSkeleton,
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
   },
 
   serialize(skeleton: unknown, translations: Map<number, string>): string {

@@ -62,6 +62,9 @@ function importOneFile(
   const content = fs.readFileSync(abs, "utf8");
   const contentHash = sha256Text(content);
   const parsed = getParser(format).parse(content);
+  if (parsed.warnings?.length) {
+    for (const w of parsed.warnings) console.warn(`  warning: ${w}`);
+  }
   const document = upsertDocument(db, relative, format, contentHash);
   const result = replaceDocumentSegments(db, document, parsed.segments);
 
@@ -77,10 +80,10 @@ function importOneFile(
 }
 
 /**
- * Import one file, a glob, or all known files under --root into the TM database.
+ * Import one file, a glob, multiple paths, or all known files under --root.
  */
 export function runImport(
-  filePath: string | undefined,
+  filePath: string | string[] | undefined,
   options: ImportOptions = {},
 ): ImportFileResult[] {
   const projectRoot = requireProjectRoot();
@@ -96,11 +99,17 @@ export function runImport(
     }
   }
 
-  if (!filePath && !options.root) {
+  const paths = Array.isArray(filePath)
+    ? filePath
+    : filePath
+      ? [filePath]
+      : [];
+
+  if (paths.length === 0 && !options.root) {
     throw new Error("Provide a file/glob path or --root=<dir>.");
   }
 
-  const targets = expandImportTargets(projectRoot, filePath ?? ".", {
+  const expandOpts = {
     ...(options.root ? { root: options.root } : {}),
     layout: {
       contentRoots,
@@ -108,28 +117,58 @@ export function runImport(
       outputRoot: config.outputRoot,
     },
     targetLangs: config.targetLangs,
-  });
+  };
+
+  const targets = [
+    ...new Set(
+      paths.length === 0
+        ? expandImportTargets(projectRoot, ".", expandOpts)
+        : paths.flatMap((p) => expandImportTargets(projectRoot, p, expandOpts)),
+    ),
+  ].sort();
 
   if (targets.length === 0) {
     throw new Error(
       options.root
         ? `No importable files found under ${options.root}`
-        : `No files matched: ${filePath}`,
+        : `No files matched: ${paths.join(", ")}`,
     );
+  }
+
+  const supported: string[] = [];
+  for (const relative of targets) {
+    const format = options.format ?? inferFormat(relative);
+    if (!format) {
+      console.warn(`skipped (unknown format): ${relative}`);
+      continue;
+    }
+    supported.push(relative);
+  }
+
+  if (supported.length === 0) {
+    throw new Error("No importable files with a known format.");
   }
 
   const db = openProjectDb(projectRoot);
   const results: ImportFileResult[] = [];
   try {
-    for (const relative of targets) {
-      const result = importOneFile(db, projectRoot, relative, options.format, contentRoots);
-      results.push(result);
-      console.log(`Imported ${result.path} as ${result.format}`);
-      console.log(
-        `  segments: ${result.segments} (inserted ${result.inserted}, updated ${result.updated}, unchanged ${result.unchanged}, removed ${result.removed})`,
-      );
-    }
-    rebuildGlossaryUsage(db);
+    db.transaction(() => {
+      for (const relative of supported) {
+        const result = importOneFile(
+          db,
+          projectRoot,
+          relative,
+          options.format,
+          contentRoots,
+        );
+        results.push(result);
+        console.log(`Imported ${result.path} as ${result.format}`);
+        console.log(
+          `  segments: ${result.segments} (inserted ${result.inserted}, updated ${result.updated}, unchanged ${result.unchanged}, removed ${result.removed})`,
+        );
+      }
+      rebuildGlossaryUsage(db);
+    })();
   } finally {
     db.close();
   }

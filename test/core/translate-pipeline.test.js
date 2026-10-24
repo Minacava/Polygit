@@ -51,7 +51,11 @@ describe("translate pipeline", () => {
       assert.equal(listSegmentsForTranslate(db, { lang: "es" }).length, 2);
       db.close();
 
-      await runTranslate("es", { providerInstance: mock, provider: "ollama" });
+      await runTranslate("es", {
+        providerInstance: mock,
+        provider: "ollama",
+        addLang: true,
+      });
       const esOut = path.join(root, "outputs", "es", "hello.md");
       assert.ok(fs.existsSync(esOut));
       assert.match(fs.readFileSync(esOut, "utf8"), /\[es\] Hello world/);
