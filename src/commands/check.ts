@@ -68,6 +68,7 @@ export interface CheckResult {
   langs: string[];
   newFiles: string[];
   changedFiles: string[];
+  deletedFiles: string[];
   byLang: LangCheckResult[];
   /** @deprecated Prefer byLang; kept for older callers aggregating one language. */
   lang?: string;
@@ -79,12 +80,14 @@ export interface CheckResult {
 export interface ContentDrift {
   newFiles: string[];
   changedFiles: string[];
+  /** Documents whose source file was deleted from disk. */
+  deletedFiles: string[];
 }
 
 /**
- * Scan contentRoots for files not yet imported (NEW) or whose bytes changed
- * since the last import (CHANGED). Excludes managed translation outputs.
- * Exported for `polygit sync` (piece 3).
+ * Scan contentRoots for files not yet imported (NEW), whose bytes changed
+ * since the last import (CHANGED), or whose source was deleted (DELETED).
+ * Excludes managed translation outputs. Exported for `polygit sync`.
  */
 export function scanContentDrift(
   db: Database.Database,
@@ -115,6 +118,7 @@ export function scanContentDrift(
   }
 
   const changedFiles: string[] = [];
+  const deletedFiles: string[] = [];
   for (const doc of docs) {
     let abs: string | null = null;
     try {
@@ -128,7 +132,7 @@ export function scanContentDrift(
       abs = null;
     }
     if (!abs || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
-      changedFiles.push(doc.path);
+      deletedFiles.push(doc.path);
       continue;
     }
     const hash = sha256Text(fs.readFileSync(abs, "utf8"));
@@ -137,7 +141,7 @@ export function scanContentDrift(
     }
   }
 
-  return { newFiles, changedFiles };
+  return { newFiles, changedFiles, deletedFiles };
 }
 
 function resolveCheckLangs(config: TmConfig, langOption?: string): string[] {
@@ -290,6 +294,11 @@ function formatHumanFailure(result: CheckResult): string {
   if (result.changedFiles.length > 0) {
     lines.push(`  CHANGED since import: ${result.changedFiles.join(", ")}`);
   }
+  if (result.deletedFiles.length > 0) {
+    lines.push(
+      `  DELETED: ${result.deletedFiles.join(", ")} (run polygit prune)`,
+    );
+  }
   for (const langResult of result.byLang) {
     for (const doc of langResult.documents) {
       const parts: string[] = [];
@@ -358,6 +367,7 @@ export function runCheck(options: CheckOptions = {}): CheckResult {
     const ok =
       drift.newFiles.length === 0 &&
       drift.changedFiles.length === 0 &&
+      drift.deletedFiles.length === 0 &&
       byLang.every((l) => l.documents.length === 0);
 
     const primary = byLang[0];
@@ -366,6 +376,7 @@ export function runCheck(options: CheckOptions = {}): CheckResult {
       langs,
       newFiles: drift.newFiles,
       changedFiles: drift.changedFiles,
+      deletedFiles: drift.deletedFiles,
       byLang,
       ...(primary
         ? {

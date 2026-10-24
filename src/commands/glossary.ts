@@ -46,35 +46,45 @@ export async function runGlossarySync(options: GlossarySyncOptions = {}): Promis
   if (options.lang !== undefined) assertLangCode(options.lang);
   const root = requireProjectRoot();
   const config = readConfig(root);
-  const db = openProjectDb(root);
-  let staleIds: string[] = [];
+  const staleByLang = new Map<string, string[]>();
 
+  const db = openProjectDb(root);
   try {
     const terms = (
       options.lang
-        ? db.prepare(`SELECT id FROM glossary WHERE lang = ?`).all(options.lang)
-        : db.prepare(`SELECT id FROM glossary`).all()
-    ) as Array<{ id: string }>;
+        ? db
+            .prepare(`SELECT id, lang FROM glossary WHERE lang = ?`)
+            .all(options.lang)
+        : db.prepare(`SELECT id, lang FROM glossary`).all()
+    ) as Array<{ id: string; lang: string }>;
 
     rebuildGlossaryUsage(db);
-    staleIds = markGlossarySegmentsStale(
-      db,
-      terms.map((t) => t.id),
-      options.lang,
-    );
-    console.log(`Marked ${staleIds.length} segment(s) as stale.`);
+
+    const byLang = new Map<string, string[]>();
+    for (const term of terms) {
+      const list = byLang.get(term.lang) ?? [];
+      list.push(term.id);
+      byLang.set(term.lang, list);
+    }
+
+    for (const [lang, ids] of byLang) {
+      const staleIds = markGlossarySegmentsStale(db, ids, lang);
+      if (staleIds.length > 0) staleByLang.set(lang, staleIds);
+    }
+
+    const total = [...staleByLang.values()].reduce((n, ids) => n + ids.length, 0);
+    console.log(`Marked ${total} segment(s) as stale across ${staleByLang.size} language(s).`);
   } finally {
     db.close();
   }
 
-  if (options.autoRetranslate && staleIds.length > 0) {
-    const lang = options.lang ?? config.targetLangs[0];
-    if (!lang) {
-      throw new Error("No target language available. Pass --lang=<code>.");
+  if (options.autoRetranslate && staleByLang.size > 0) {
+    for (const [lang, segmentIds] of staleByLang) {
+      await runTranslate(lang, {
+        provider: config.defaultProvider,
+        segmentIds,
+        noBranch: true,
+      });
     }
-    await runTranslate(lang, {
-      provider: config.defaultProvider,
-      segmentIds: staleIds,
-    });
   }
 }

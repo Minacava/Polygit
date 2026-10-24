@@ -50,15 +50,28 @@ describe("repository", () => {
       { orderIndex: 0, sourceText: "Welcome to polygit." },
       { orderIndex: 1, sourceText: "Unrelated sentence." },
     ]);
+    const segs = db
+      .prepare(`SELECT id FROM segments WHERE document_id = ? ORDER BY order_index`)
+      .all(doc.id);
+    upsertTranslation(db, segs[0].id, "fr", "Bienvenue sur polygit.", "llm", true);
+    upsertTranslation(db, segs[0].id, "de", "Willkommen bei polygit.", "llm", true);
 
     const { row } = upsertGlossaryTerm(db, "polygit", "polygit", "fr", "Product name");
     rebuildGlossaryUsage(db, row.id);
-    const staleIds = markGlossarySegmentsStale(db, [row.id]);
+    const staleIds = markGlossarySegmentsStale(db, [row.id], "fr");
     assert.equal(staleIds.length, 1);
 
-    const counts = getStatusCounts(db);
-    assert.equal(counts[0]?.stale, 1);
-    assert.equal(counts[0]?.pending, 1);
+    const fr = db
+      .prepare(`SELECT status, approved FROM translations WHERE segment_id = ? AND lang = 'fr'`)
+      .get(segs[0].id);
+    const de = db
+      .prepare(`SELECT status, approved FROM translations WHERE segment_id = ? AND lang = 'de'`)
+      .get(segs[0].id);
+    assert.equal(fr.status, "stale");
+    assert.equal(fr.approved, 0);
+    // Other languages must stay approved (PG-13).
+    assert.equal(de.status, "approved");
+    assert.equal(de.approved, 1);
     db.close();
   });
 
