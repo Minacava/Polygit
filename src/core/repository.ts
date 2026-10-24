@@ -124,14 +124,42 @@ export function replaceDocumentSegments(
 
       pairedNew.add(next.id);
       pairedOld.add(best.old.id);
-      keptIds.add(best.old.id);
 
-      db.prepare(
-        `UPDATE segments SET order_index = ?, source_text = ?, status = 'stale', updated_at = ? WHERE id = ?`,
-      ).run(next.orderIndex, next.sourceText, ts, best.old.id);
+      // Re-key to the new content-stable id so the next identical re-import
+      // exact-matches instead of re-pairing and re-staling forever (PG-05).
+      if (next.id !== best.old.id) {
+        db.prepare(
+          `INSERT INTO segments (id, document_id, order_index, source_text, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'stale', ?, ?)`,
+        ).run(
+          next.id,
+          document.id,
+          next.orderIndex,
+          next.sourceText,
+          best.old.created_at,
+          ts,
+        );
+        db.prepare(`UPDATE translations SET segment_id = ? WHERE segment_id = ?`).run(
+          next.id,
+          best.old.id,
+        );
+        db.prepare(`UPDATE glossary_usage SET segment_id = ? WHERE segment_id = ?`).run(
+          next.id,
+          best.old.id,
+        );
+        db.prepare(`DELETE FROM segments WHERE id = ?`).run(best.old.id);
+      } else {
+        db.prepare(
+          `UPDATE segments SET order_index = ?, source_text = ?, status = 'stale', updated_at = ? WHERE id = ?`,
+        ).run(next.orderIndex, next.sourceText, ts, best.old.id);
+      }
       db.prepare(
         `UPDATE translations SET status = 'stale', approved = 0, updated_at = ? WHERE segment_id = ?`,
-      ).run(ts, best.old.id);
+      ).run(ts, next.id);
+      keptIds.add(next.id);
+      // Old id was already deleted (or updated in place); keep it out of the
+      // removal sweep so `removed` stays accurate.
+      keptIds.add(best.old.id);
       updated += 1;
     }
 
@@ -672,7 +700,11 @@ export function getStatusCounts(
   });
 }
 
-/** Count translated segments that are not yet locally approved (for publish gate). */
+/**
+ * Count segments that still need approval for `lang` (publish / review gate).
+ * Includes segments with no translation row yet (pending), unapproved rows,
+ * and stale translations — not only existing translation rows.
+ */
 export function countUnapprovedTranslations(
   db: Database.Database,
   lang?: string,
@@ -680,16 +712,22 @@ export function countUnapprovedTranslations(
   if (lang) {
     const row = db
       .prepare(
-        `SELECT COUNT(*) AS n FROM translations t
-         WHERE t.lang = ? AND (t.approved = 0 OR t.status = 'stale')`,
+        `SELECT COUNT(*) AS n FROM segments s
+         LEFT JOIN translations t ON t.segment_id = s.id AND t.lang = ?
+         WHERE t.segment_id IS NULL OR t.approved = 0 OR t.status = 'stale'`,
       )
       .get(lang) as { n: number };
     return row.n;
   }
   const row = db
     .prepare(
-      `SELECT COUNT(*) AS n FROM translations t
-       WHERE t.approved = 0 OR t.status = 'stale'`,
+      `SELECT (
+         SELECT COUNT(*) FROM translations t
+         WHERE t.approved = 0 OR t.status = 'stale'
+       ) + (
+         SELECT COUNT(*) FROM segments s
+         WHERE NOT EXISTS (SELECT 1 FROM translations t WHERE t.segment_id = s.id)
+       ) AS n`,
     )
     .get() as { n: number };
   return row.n;

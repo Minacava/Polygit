@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fix (PG-01): `import` glob / `--root` skips managed translation outputs (no more `docs/fr/fr/...`)
+- Fix (PG-02): refuse to write outputs when the source changed since import; match translations by source text
+- Fix (PG-03): publish / review “all approved” counts segments without a translation row
+- Fix (PG-05): re-key segment ids on source edits so identical re-imports stay unchanged
+- Fix (PG-04): `check` fails on broken placeholders; `--require-approved` fails on unapproved translations
+
 ## 1.2.6
 
 - Fix: `status` on-disk count excludes managed translation outputs; pluralize as "1 file" / "N files" (no `file(s)`)

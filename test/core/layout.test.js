@@ -117,6 +117,68 @@ describe("layout", () => {
     assert.deepEqual(expandImportTargets(root, "docs/a.md"), ["docs/a.md"]);
   });
 
+  it("excludes managed outputs from import globs and --root (PG-01)", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-layout-out-"));
+    fs.mkdirSync(path.join(root, "docs", "fr", "guide"), { recursive: true });
+    fs.writeFileSync(path.join(root, "docs", "index.md"), "# En\n", "utf8");
+    fs.writeFileSync(path.join(root, "docs", "fr", "index.md"), "# Fr\n", "utf8");
+    fs.writeFileSync(
+      path.join(root, "docs", "fr", "guide", "install.md"),
+      "# Install\n",
+      "utf8",
+    );
+    fs.writeFileSync(path.join(root, "docs", "intro.fr.md"), "# Side\n", "utf8");
+
+    const inplace = {
+      contentRoots: ["docs"],
+      outputMode: "in-place-locale",
+      outputRoot: "outputs",
+    };
+    assert.deepEqual(
+      expandImportTargets(root, "docs/**/*.md", {
+        layout: inplace,
+        targetLangs: ["fr"],
+      }),
+      ["docs/index.md", "docs/intro.fr.md"],
+    );
+    assert.deepEqual(
+      expandImportTargets(root, ".", {
+        root: "docs",
+        layout: inplace,
+        targetLangs: ["fr"],
+      }),
+      ["docs/index.md", "docs/intro.fr.md"],
+    );
+    assert.throws(
+      () =>
+        expandImportTargets(root, "docs/fr/index.md", {
+          layout: inplace,
+          targetLangs: ["fr"],
+        }),
+      /polygit output/i,
+    );
+
+    const sidecar = { ...inplace, outputMode: "sidecar" };
+    assert.deepEqual(
+      expandImportTargets(root, "docs/**/*.md", {
+        layout: sidecar,
+        targetLangs: ["fr"],
+      }),
+      ["docs/fr/guide/install.md", "docs/fr/index.md", "docs/index.md"],
+    );
+
+    fs.mkdirSync(path.join(root, "outputs", "fr"), { recursive: true });
+    fs.writeFileSync(path.join(root, "outputs", "fr", "index.md"), "# M\n", "utf8");
+    const mirror = { ...inplace, outputMode: "mirror", outputRoot: "outputs" };
+    assert.deepEqual(
+      expandImportTargets(root, "outputs/**/*.md", {
+        layout: mirror,
+        targetLangs: ["fr"],
+      }),
+      [],
+    );
+  });
+
   it("assertInContentRoots throws a clear error", () => {
     assert.throws(
       () => assertInContentRoots("other/a.md", ["docs", "content"]),
