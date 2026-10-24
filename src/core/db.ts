@@ -13,7 +13,7 @@ export type SegmentStatus = "pending" | "translated" | "stale" | "approved";
 export type TranslationSource = "tm-exact" | "tm-fuzzy" | "llm" | "manual";
 
 /** Per-language workflow status (lives on translations, not segments). */
-export type TranslationLangStatus = "translated" | "stale" | "approved";
+export type TranslationLangStatus = "translated" | "stale" | "approved" | "needs_fix";
 
 export interface DocumentRow {
   id: string;
@@ -60,6 +60,11 @@ export interface TranslationMemoryRow {
   source_norm: string;
   /** Style fingerprint when this TM entry was written; null = unset. */
   style_hash: string | null;
+  /**
+   * 1 = safe for tm-exact reuse (human-approved).
+   * 0 = draft from LLM; exact match skips these.
+   */
+  approved: number;
 }
 
 export interface GlossaryRow {
@@ -107,7 +112,7 @@ CREATE TABLE IF NOT EXISTS translations (
   lang TEXT NOT NULL,
   target_text TEXT NOT NULL,
   source TEXT NOT NULL CHECK (source IN ('tm-exact', 'tm-fuzzy', 'llm', 'manual')),
-  status TEXT NOT NULL DEFAULT 'translated' CHECK (status IN ('translated', 'stale', 'approved')),
+  status TEXT NOT NULL DEFAULT 'translated' CHECK (status IN ('translated', 'stale', 'approved', 'needs_fix')),
   approved INTEGER NOT NULL DEFAULT 0 CHECK (approved IN (0, 1)),
   updated_at TEXT NOT NULL,
   style_hash TEXT,
@@ -129,7 +134,8 @@ CREATE TABLE IF NOT EXISTS translation_memory (
   usage_count INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL,
   source_norm TEXT NOT NULL,
-  style_hash TEXT
+  style_hash TEXT,
+  approved INTEGER NOT NULL DEFAULT 0 CHECK (approved IN (0, 1))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tm_lang_source_unique ON translation_memory(lang, source_text);
@@ -165,7 +171,7 @@ export function resolveDbPath(projectRoot: string): string {
  * Creates `.tm/` when missing.
  */
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * Ensure translation_memory.source_norm exists, is backfilled with normalizeText
@@ -320,10 +326,75 @@ function ensureSchemaUpgrades(db: Database.Database): void {
     row.version = 5;
   }
 
+  if (row.version < 6) {
+    ensureStyleHashColumns(db);
+    db.prepare(`UPDATE schema_version SET version = ?`).run(6);
+    row.version = 6;
+  }
+
+  if (row.version < 7) {
+    ensureNeedsFixAndTmApproved(db);
+    db.prepare(`UPDATE schema_version SET version = ?`).run(7);
+    row.version = 7;
+  }
+
   if (row.version < SCHEMA_VERSION) {
     ensureStyleHashColumns(db);
+    ensureNeedsFixAndTmApproved(db);
     db.prepare(`UPDATE schema_version SET version = ?`).run(SCHEMA_VERSION);
   }
+}
+
+/**
+ * Schema v7: allow translations.status = needs_fix; TM.approved for exact reuse.
+ * Legacy TM rows are treated as approved so existing memory keeps working.
+ */
+function ensureNeedsFixAndTmApproved(db: Database.Database): void {
+  const tmCols = db.prepare(`PRAGMA table_info(translation_memory)`).all() as Array<{
+    name: string;
+  }>;
+  if (tmCols.length > 0 && !tmCols.some((c) => c.name === "approved")) {
+    db.exec(
+      `ALTER TABLE translation_memory ADD COLUMN approved INTEGER NOT NULL DEFAULT 1`,
+    );
+  }
+
+  // Recreate translations so CHECK accepts needs_fix (SQLite cannot ALTER CHECK).
+  const trCols = db.prepare(`PRAGMA table_info(translations)`).all() as Array<{ name: string }>;
+  if (trCols.length === 0) return;
+
+  const sample = db
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'translations'`,
+    )
+    .get() as { sql: string } | undefined;
+  if (sample?.sql.includes("needs_fix")) return;
+
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    CREATE TABLE translations_v7 (
+      id TEXT PRIMARY KEY,
+      segment_id TEXT NOT NULL REFERENCES segments(id) ON DELETE CASCADE,
+      lang TEXT NOT NULL,
+      target_text TEXT NOT NULL,
+      source TEXT NOT NULL CHECK (source IN ('tm-exact', 'tm-fuzzy', 'llm', 'manual')),
+      status TEXT NOT NULL DEFAULT 'translated'
+        CHECK (status IN ('translated', 'stale', 'approved', 'needs_fix')),
+      approved INTEGER NOT NULL DEFAULT 0 CHECK (approved IN (0, 1)),
+      updated_at TEXT NOT NULL,
+      style_hash TEXT,
+      UNIQUE (segment_id, lang)
+    );
+    INSERT INTO translations_v7
+      (id, segment_id, lang, target_text, source, status, approved, updated_at, style_hash)
+      SELECT id, segment_id, lang, target_text, source, status, approved, updated_at, style_hash
+      FROM translations;
+    DROP TABLE translations;
+    ALTER TABLE translations_v7 RENAME TO translations;
+    CREATE INDEX IF NOT EXISTS idx_translations_lang ON translations(lang);
+    CREATE INDEX IF NOT EXISTS idx_translations_status ON translations(status);
+    PRAGMA foreign_keys = ON;
+  `);
 }
 
 export function openDatabase(projectRoot: string): Database.Database {

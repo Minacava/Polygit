@@ -123,18 +123,36 @@ const WRAP_QUOTE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ["「", "」"],
 ];
 
-function stripWrappingQuotes(text: string): string {
+/**
+ * Strip a single pair of wrapping quotes only when they wrap the whole string,
+ * the source was not already wrapped the same way, and the inner text does not
+ * contain the same quote characters (so `"Fast" and "cheap"` is preserved).
+ */
+function stripWrappingQuotes(text: string, source = ""): string {
+  const src = source.trim();
   let out = text;
   let changed = true;
   while (changed) {
     changed = false;
     const trimmed = out.trim();
     for (const [open, close] of WRAP_QUOTE_PAIRS) {
-      if (trimmed.startsWith(open) && trimmed.endsWith(close) && trimmed.length > open.length + close.length) {
-        out = trimmed.slice(open.length, trimmed.length - close.length).trim();
-        changed = true;
-        break;
+      if (
+        !(
+          trimmed.startsWith(open) &&
+          trimmed.endsWith(close) &&
+          trimmed.length > open.length + close.length
+        )
+      ) {
+        continue;
       }
+      const inner = trimmed.slice(open.length, trimmed.length - close.length);
+      const sourceWrapped = src.startsWith(open) && src.endsWith(close);
+      if (sourceWrapped || inner.includes(open) || inner.includes(close)) {
+        continue;
+      }
+      out = inner.trim();
+      changed = true;
+      break;
     }
   }
   return out.trim();
@@ -146,16 +164,35 @@ function stripMarkdownFence(text: string): string {
   return fence?.[1]?.trim() ?? trimmed;
 }
 
+function stripThinkBlocks(text: string): string {
+  let out = text.replace(/<think>[\s\S]*?<\/think>\s*/gi, "");
+  // Orphan closing tag (model omitted the opening tag).
+  out = out.replace(/^[\s\S]*?<\/think>\s*/i, "");
+  return out.trim();
+}
+
+function stripTranslationPreamble(text: string, source: string): string {
+  if (/^(here is|here's|translation)/i.test(source.trim())) return text;
+  return text
+    .replace(
+      /^(?:here(?:'s| is) (?:the |your )?translation[^:\n]*:|translation:)\s*/i,
+      "",
+    )
+    .trim();
+}
+
 /**
- * Strip prompt delimiter tags that models sometimes echo into the translation.
- * Also drops wrapping quotes / markdown fences some models add around the whole answer.
+ * Strip prompt delimiter tags, think blocks, preambles, wrapping quotes, and
+ * markdown fences that models sometimes add around the translation.
  */
-export function sanitizeLlmTranslation(text: string): string {
+export function sanitizeLlmTranslation(text: string, source = ""): string {
   let out = text.replace(/\r\n/g, "\n").trim();
+  out = stripThinkBlocks(out);
+  out = stripTranslationPreamble(out, source);
   // Remove every occurrence (models wrap, prefix, or echo mid-output).
   out = out.split(DOCUMENT_DATA_START).join("").split(DOCUMENT_DATA_END).join("");
   out = stripMarkdownFence(out);
-  out = stripWrappingQuotes(out);
+  out = stripWrappingQuotes(out, source);
   return out;
 }
 

@@ -187,6 +187,10 @@ function countPlaceholderFailures(
   for (const seg of segments) {
     const tr = translations.get(seg.id);
     if (!tr) continue;
+    if (tr.status === "needs_fix") {
+      n += 1;
+      continue;
+    }
     if (missingPlaceholders(seg.source_text, tr.target_text).length > 0) n += 1;
   }
   return n;

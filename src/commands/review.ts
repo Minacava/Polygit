@@ -15,6 +15,7 @@ import {
   countUnapprovedTranslations,
   listReviewSegments,
   upsertTranslation,
+  upsertTranslationMemory,
 } from "../core/repository.js";
 import { ensureTranslationBranch } from "../git/translation-branch.js";
 
@@ -46,9 +47,15 @@ function tryApproveSegment(
   touchedDocs: Set<string>,
   documentPath: string,
   styleHash: string | null = null,
+  sourceText?: string,
 ): boolean {
   if (!targetText) return false;
   upsertTranslation(db, segmentId, lang, targetText, "manual", true, styleHash);
+  if (sourceText) {
+    upsertTranslationMemory(db, sourceText, targetText, lang, styleHash, {
+      approved: true,
+    });
+  }
   touchedDocs.add(documentPath);
   return true;
 }
@@ -99,6 +106,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
             touchedDocs,
             row.document_path,
             styleHashFor(row.document_path),
+            row.source_text,
           )
         ) {
           approved += 1;
@@ -151,6 +159,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
                   touchedDocs,
                   next.document_path,
                   styleHashFor(next.document_path),
+                  next.source_text,
                 )
               ) {
                 bulk += 1;
@@ -176,6 +185,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
                 touchedDocs,
                 row.document_path,
                 styleHashFor(row.document_path),
+                row.source_text,
               )
             ) {
               console.log("No translation to approve.");
@@ -191,6 +201,7 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
               console.log("Empty edit ignored.\n");
               continue;
             }
+            const styleHash = styleHashFor(row.document_path);
             upsertTranslation(
               db,
               row.id,
@@ -198,8 +209,11 @@ export async function runReview(options: ReviewOptions = {}): Promise<void> {
               edited.trim(),
               "manual",
               true,
-              styleHashFor(row.document_path),
+              styleHash,
             );
+            upsertTranslationMemory(db, row.source_text, edited.trim(), lang, styleHash, {
+              approved: true,
+            });
             touchedDocs.add(row.document_path);
             console.log("Saved and approved.\n");
           }
