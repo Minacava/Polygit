@@ -189,17 +189,28 @@ export const markdownParser: Parser = {
       // Display-math fences: keep the whole $$ … $$ block raw.
       if (line.trim() === "$$") {
         flushProse();
+        const start = i;
         const math = [line];
+        let closed = false;
         i += 1;
         while (i < lines.length) {
           math.push(lines[i] ?? "");
           if ((lines[i] ?? "").trim() === "$$") {
             i += 1;
+            closed = true;
             break;
           }
           i += 1;
         }
-        pushRaw(`${math.join("\n")}\n`);
+        if (closed) {
+          pushRaw(`${math.join("\n")}\n`);
+        } else {
+          warnings.push(
+            `unclosed $$ math block at line ${start + 1}; treating following content as text`,
+          );
+          pushRaw(`${line}\n`);
+          i = start + 1;
+        }
         prevBlank = false;
         continue;
       }

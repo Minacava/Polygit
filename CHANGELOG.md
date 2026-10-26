@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Warn with the opening line number when a `$$` math block is unclosed, and keep the following document content available for translation. Closed math blocks remain raw.
+
 ## 1.2.8
 
 Demo-blocking and high-severity fixes from the 1.2.7 re-test:
