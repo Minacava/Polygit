@@ -299,6 +299,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
 
     let llmDone = 0;
     const failures: Array<{ id: string; error: string }> = [];
+    let needsFix = 0;
     let consecutiveFailures = 0;
     const maxConsecutive = 3;
     let stopWorkers = false;
@@ -370,6 +371,7 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
           console.warn(
             `Placeholder check failed for ${segment.document_path} (${segment.id.slice(0, 8)}…): missing ${missing.join(", ")}. Marked needs_fix.`,
           );
+          needsFix += 1;
         } else {
           upsertTranslation(db, segment.id, lang, translated, "llm", false, styleHash);
           // Draft TM only — exact reuse waits for review approval (PG-12).
@@ -385,8 +387,8 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
             style_hash: styleHash,
             approved: 0,
           });
+          llm += 1;
         }
-        llm += 1;
         llmDone += 1;
         bar?.update(llmDone);
       });
@@ -426,14 +428,19 @@ export async function runTranslate(lang: string, options: TranslateOptions = {})
     }
 
     const prefix = options.dryRun ? "[dry-run] " : "";
+    const translated = tmExact + tmFuzzy + llm;
+    const problems = [
+      ...(failures.length > 0 ? [`${failures.length} failed`] : []),
+      ...(needsFix > 0 ? [`${needsFix} needs fix`] : []),
+    ];
     console.log(
-      `${prefix}Translated ${segments.length} segment(s) → ${lang} (tm-exact=${tmExact}, tm-fuzzy=${tmFuzzy}, llm=${llm}, provider=${providerName}, model=${modelChoice.model})`,
+      `${prefix}Translated ${translated} of ${segments.length} segment(s) → ${lang} (tm-exact=${tmExact}, tm-fuzzy=${tmFuzzy}, llm=${llm}, provider=${providerName}, model=${modelChoice.model})${problems.length > 0 ? `, ${problems.join(", ")}` : ""}`,
     );
     if (written.length) console.log(`  wrote: ${written.join(", ")}`);
     if (failures.length > 0) {
       console.error(`${failures.length} segment(s) failed during translate.`);
-      process.exitCode = 1;
     }
+    if (failures.length > 0 || needsFix > 0) process.exitCode = 1;
   } finally {
     db.close();
   }
