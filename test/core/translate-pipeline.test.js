@@ -30,6 +30,18 @@ async function setupProject() {
   return { root, prev };
 }
 
+async function captureLogs(action) {
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(" "));
+  try {
+    await action();
+  } finally {
+    console.log = originalLog;
+  }
+  return logs.join("\n");
+}
+
 describe("translate pipeline", () => {
   it("translates with a mock provider and writes outputs for fr then es", async () => {
     const { root, prev } = await setupProject();
@@ -41,7 +53,11 @@ describe("translate pipeline", () => {
         },
       };
 
-      await runTranslate("fr", { providerInstance: mock, provider: "ollama" });
+      const frLogs = await captureLogs(() =>
+        runTranslate("fr", { providerInstance: mock, provider: "ollama" }),
+      );
+      assert.match(frLogs, /Translated 2 of 2 segment\(s\) → fr /);
+      assert.equal(process.exitCode ?? 0, 0);
       const frOut = path.join(root, "outputs", "fr", "hello.md");
       assert.ok(fs.existsSync(frOut));
       assert.match(fs.readFileSync(frOut, "utf8"), /\[fr\] Hello world/);
@@ -51,11 +67,14 @@ describe("translate pipeline", () => {
       assert.equal(listSegmentsForTranslate(db, { lang: "es" }).length, 2);
       db.close();
 
-      await runTranslate("es", {
-        providerInstance: mock,
-        provider: "ollama",
-        addLang: true,
-      });
+      const esLogs = await captureLogs(() =>
+        runTranslate("es", {
+          providerInstance: mock,
+          provider: "ollama",
+          addLang: true,
+        }),
+      );
+      assert.match(esLogs, /Translated 2 of 2 segment\(s\) → es /);
       const esOut = path.join(root, "outputs", "es", "hello.md");
       assert.ok(fs.existsSync(esOut));
       assert.match(fs.readFileSync(esOut, "utf8"), /\[es\] Hello world/);
@@ -135,6 +154,7 @@ describe("translate pipeline", () => {
   it("retries then leaves unapproved when LLM drops placeholders", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "polygit-ph-"));
     const prev = process.cwd();
+    const prevExitCode = process.exitCode;
     process.chdir(root);
     try {
       await runInit();
@@ -155,12 +175,16 @@ describe("translate pipeline", () => {
         },
       };
 
-      await runTranslate("fr", {
-        providerInstance: mock,
-        provider: "ollama",
-        placeholderRetries: 1,
-      });
+      const logs = await captureLogs(() =>
+        runTranslate("fr", {
+          providerInstance: mock,
+          provider: "ollama",
+          placeholderRetries: 1,
+        }),
+      );
       assert.equal(calls, 2, "should retry once after placeholder loss");
+      assert.match(logs, /Translated 0 of 1 segment\(s\) → fr .*1 needs fix/);
+      assert.equal(process.exitCode, 1);
 
       const db = openDatabase(root);
       assert.equal(countUnapprovedTranslations(db, "fr"), 1);
@@ -179,6 +203,7 @@ describe("translate pipeline", () => {
       assert.doesNotMatch(out, /Bonjour ami/);
       db.close();
     } finally {
+      process.exitCode = prevExitCode;
       process.chdir(prev);
     }
   });
@@ -196,11 +221,14 @@ describe("translate pipeline", () => {
         },
       };
 
-      await runTranslate("fr", {
-        providerInstance: mock,
-        provider: "ollama",
-        concurrency: 1,
-      });
+      const logs = await captureLogs(() =>
+        runTranslate("fr", {
+          providerInstance: mock,
+          provider: "ollama",
+          concurrency: 1,
+        }),
+      );
+      assert.match(logs, /Translated 1 of 2 segment\(s\) → fr .*1 failed/);
       assert.equal(process.exitCode, 1);
       process.exitCode = 0;
 
@@ -208,6 +236,46 @@ describe("translate pipeline", () => {
       assert.ok(fs.existsSync(out));
       assert.match(fs.readFileSync(out, "utf8"), /FR:Hello world/);
     } finally {
+      process.chdir(prev);
+    }
+  });
+
+  it("counts successes separately from failures and needs-fix segments", async () => {
+    const { root, prev } = await setupProject();
+    const prevExitCode = process.exitCode;
+    try {
+      fs.writeFileSync(
+        path.join(root, "sources", "hello.md"),
+        "Hello world.\n\nRun `npm test` first.\n\nThird line.\n",
+        "utf8",
+      );
+      runImport("sources/hello.md", { format: "markdown" });
+
+      const mock = {
+        name: "ollama",
+        async translateSegment(text) {
+          if (text.startsWith("Third")) throw new Error("simulated failure");
+          if (text.includes("`")) return "Lancez d'abord les tests.";
+          return `[fr] ${text}`;
+        },
+      };
+
+      const logs = await captureLogs(() =>
+        runTranslate("fr", {
+          providerInstance: mock,
+          provider: "ollama",
+          concurrency: 1,
+          placeholderRetries: 0,
+        }),
+      );
+      assert.match(logs, /Translated 1 of 3 segment\(s\) → fr .*llm=1.*1 failed, 1 needs fix/);
+      assert.equal(process.exitCode, 1);
+      const output = fs.readFileSync(path.join(root, "outputs", "fr", "hello.md"), "utf8");
+      assert.match(output, /\[fr\] Hello world/);
+      assert.match(output, /Run `npm test` first/);
+      assert.match(output, /Third line/);
+    } finally {
+      process.exitCode = prevExitCode;
       process.chdir(prev);
     }
   });
