@@ -158,3 +158,39 @@ describe("markdown parser", () => {
     assert.match(out, /description:\s*"Démarrage : installation"/);
   });
 });
+
+for (const eol of ["\n", "\r\n"]) {
+  it(`warns on unclosed display math and translates the rest (${JSON.stringify(eol)})`, () => {
+    const input = ["# T", "", "Intro.", "", "$$", "E = mc^2", "",
+      "## Next section", "", "More text here.", ""].join(eol);
+    const parsed = markdownParser.parse(input);
+    assert.deepEqual(parsed.warnings, [
+      "unclosed $$ math block at line 5; treating following content as text",
+    ]);
+    assert.deepEqual(parsed.segments.map(s => s.sourceText),
+      ["T", "Intro.", "E = mc^2", "Next section", "More text here."]);
+    const identity = new Map(parsed.segments.map(s => [s.orderIndex, s.sourceText]));
+    assert.equal(markdownParser.serialize(parsed.skeleton, identity), input);
+    const translations = new Map(parsed.segments.map(s => [s.orderIndex, `[fr] ${s.sourceText}`]));
+    const out = markdownParser.serialize(parsed.skeleton, translations);
+    assert.ok(out.includes(`$$${eol}[fr] E = mc^2`));
+    assert.ok(out.includes("## [fr] Next section"));
+    assert.ok(out.includes("[fr] More text here."));
+  });
+}
+
+it("warns on an isolated math opener at EOF", () => {
+  const parsed = markdownParser.parse("$$");
+  assert.equal(parsed.warnings.length, 1);
+  assert.match(parsed.warnings[0], /line 1/);
+  assert.deepEqual(parsed.segments, []);
+  assert.equal(markdownParser.serialize(parsed.skeleton, new Map()), "$$\n");
+});
+
+it("keeps a closed math block raw when its closer is the last line", () => {
+  const input = "$$\nE = mc^2\n$$";
+  const parsed = markdownParser.parse(input);
+  assert.equal(parsed.warnings, undefined);
+  assert.deepEqual(parsed.segments, []);
+  assert.equal(markdownParser.serialize(parsed.skeleton, new Map()), input + "\n");
+});
