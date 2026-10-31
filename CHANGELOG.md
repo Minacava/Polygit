@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix: strip localized LLM translation preambles while preserving legitimate source text
+
 ## 1.2.8
 
 Demo-blocking and high-severity fixes from the 1.2.7 re-test:

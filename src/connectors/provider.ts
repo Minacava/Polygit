@@ -171,14 +171,12 @@ function stripThinkBlocks(text: string): string {
   return out.trim();
 }
 
+const TRANSLATION_PREAMBLE_LINE =
+  /^(?:here(?:'s| is) (?:the |your )?translation[^:\r\n]*|translation|voici la traduction|aquí está la traducción|hier ist die übersetzung|ecco la traduzione|aqui está a tradução)[ \t]*:[ \t]*\r?\n+/i;
+
 function stripTranslationPreamble(text: string, source: string): string {
-  if (/^(here is|here's|translation)/i.test(source.trim())) return text;
-  return text
-    .replace(
-      /^(?:here(?:'s| is) (?:the |your )?translation[^:\n]*:|translation:)\s*/i,
-      "",
-    )
-    .trim();
+  if (TRANSLATION_PREAMBLE_LINE.test(source.trimStart())) return text;
+  return text.replace(TRANSLATION_PREAMBLE_LINE, "").trim();
 }
 
 /**
