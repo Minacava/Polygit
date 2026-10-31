@@ -92,6 +92,41 @@ describe("provider helpers", () => {
     );
   });
 
+  it("strips localized translation preambles", () => {
+    const cases = [
+      ["Voici la traduction :\nBonjour le monde", "Bonjour le monde"],
+      ["Aquí está la traducción:\nHola mundo", "Hola mundo"],
+      ["Hier ist die Übersetzung:\nHallo Welt", "Hallo Welt"],
+      ["Ecco la traduzione:\nCiao mondo", "Ciao mondo"],
+      ["Aqui está a tradução:\nOlá mundo", "Olá mundo"],
+    ];
+
+    for (const [modelOutput, expected] of cases) {
+      assert.equal(sanitizeLlmTranslation(modelOutput), expected);
+    }
+  });
+
+  it("strips a model preamble when the source starts with Here is", () => {
+    assert.equal(
+      sanitizeLlmTranslation(
+        "Here is the translation:\nVoici le guide.",
+        "Here is the guide.",
+      ),
+      "Voici le guide.",
+    );
+  });
+
+  it("preserves legitimate single-line text beginning with Translation", () => {
+    const text = "Translation: the process of converting text between languages.";
+    assert.equal(sanitizeLlmTranslation(text), text);
+  });
+
+  it("preserves a translated preamble-shaped line from the source", () => {
+    const source = "Translation:\nText";
+    const translation = "Voici la traduction :\nTexte";
+    assert.equal(sanitizeLlmTranslation(translation, source), translation);
+  });
+
   it("asks the model not to echo delimiter tags", () => {
     const messages = buildTranslationMessages("Hello", "en", "fr");
     assert.match(messages[0]?.content ?? "", /Do not copy the <TRANSLATION_DOCUMENT>/);
